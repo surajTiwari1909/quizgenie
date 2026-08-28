@@ -13,7 +13,7 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
 COPY . .
-RUN mkdir -p /app/media \
+RUN mkdir -p /app/media /app/private_documents \
     && chown -R app:app /app
 
 USER app
