@@ -8,5 +8,5 @@ __pycache__
 .ruff_cache
 .coverage
 media
+private_documents
 *.egg-info
-
