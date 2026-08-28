@@ -2,6 +2,7 @@ from .settings import *  # noqa: F403
 
 APP_ENV = "test"
 DEBUG = False
+ALLOWED_HOSTS = ["testserver"]
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 DATABASES = {
     "default": {
