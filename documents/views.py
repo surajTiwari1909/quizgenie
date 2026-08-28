@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -7,6 +8,7 @@ from rest_framework.decorators import (
     permission_classes,
     throttle_classes,
 )
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -20,6 +22,8 @@ from documents.serializers import (
     DocumentUploadSerializer,
 )
 from documents.throttles import DocumentUploadRateThrottle
+from documents.upload_handlers import DocumentSizeLimitUploadHandler
+from documents.validators import MAX_DOCUMENT_SIZE
 
 
 @api_view(["GET", "POST"])
@@ -36,7 +40,18 @@ def document_collection(request: Request) -> Response:
         )
         return Response(serializer.data)
 
-    serializer = DocumentUploadSerializer(data=request.data)
+    request._request.upload_handlers.insert(  # noqa: SLF001
+        0,
+        DocumentSizeLimitUploadHandler(request._request),  # noqa: SLF001
+    )
+    request_data = request.data
+    if getattr(request._request, "document_upload_too_large", False):  # noqa: SLF001
+        max_size = getattr(settings, "DOCUMENT_MAX_FILE_SIZE", MAX_DOCUMENT_SIZE)
+        raise ValidationError(
+            {"file": f"Document must be {max_size // (1024 * 1024)} MB or smaller."}
+        )
+
+    serializer = DocumentUploadSerializer(data=request_data)
     serializer.is_valid(raise_exception=True)
     document = services.create_document(
         owner=request.user,
@@ -87,3 +102,15 @@ def document_download(request: Request, document_id: int) -> HttpResponse:
         filename=document.original_filename,
         content_type="application/pdf",
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def document_retry(request: Request, document_id: int) -> Response:
+    document = get_object_or_404(Document, id=document_id, owner=request.user)
+    try:
+        document = services.retry_document_processing(document)
+    except services.InvalidDocumentState as error:
+        return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+    serializer = DocumentResponseSerializer(document, context={"request": request})
+    return Response(serializer.data, status=status.HTTP_202_ACCEPTED)

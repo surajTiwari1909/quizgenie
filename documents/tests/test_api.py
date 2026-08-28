@@ -1,12 +1,18 @@
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from io import BytesIO
+from threading import Barrier
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import close_old_connections, connection
 from django.urls import reverse
+from django.utils import timezone
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 
 from documents import services
@@ -23,30 +29,32 @@ def create_pdf_content(
     encrypted: bool = False,
     include_page: bool = True,
     text: str | None = None,
+    page_count: int = 1,
 ) -> bytes:
     content = BytesIO()
     writer = PdfWriter()
     if include_page:
-        page = writer.add_blank_page(width=200, height=200)
-        if text:
-            font = DictionaryObject(
-                {
-                    NameObject("/Type"): NameObject("/Font"),
-                    NameObject("/Subtype"): NameObject("/Type1"),
-                    NameObject("/BaseFont"): NameObject("/Helvetica"),
-                }
-            )
-            resources = DictionaryObject(
-                {
-                    NameObject("/Font"): DictionaryObject(
-                        {NameObject("/F1"): writer._add_object(font)}  # noqa: SLF001
-                    )
-                }
-            )
-            stream = DecodedStreamObject()
-            stream.set_data(f"BT /F1 12 Tf 10 100 Td ({text}) Tj ET".encode())
-            page[NameObject("/Resources")] = resources
-            page[NameObject("/Contents")] = writer._add_object(stream)  # noqa: SLF001
+        for _ in range(page_count):
+            page = writer.add_blank_page(width=200, height=200)
+            if text:
+                font = DictionaryObject(
+                    {
+                        NameObject("/Type"): NameObject("/Font"),
+                        NameObject("/Subtype"): NameObject("/Type1"),
+                        NameObject("/BaseFont"): NameObject("/Helvetica"),
+                    }
+                )
+                resources = DictionaryObject(
+                    {
+                        NameObject("/Font"): DictionaryObject(
+                            {NameObject("/F1"): writer._add_object(font)}  # noqa: SLF001
+                        )
+                    }
+                )
+                stream = DecodedStreamObject()
+                stream.set_data(f"BT /F1 12 Tf 10 100 Td ({text}) Tj ET".encode())
+                page[NameObject("/Resources")] = resources
+                page[NameObject("/Contents")] = writer._add_object(stream)  # noqa: SLF001
     if encrypted:
         writer.encrypt("secret-password")
     writer.write(content)
@@ -197,10 +205,6 @@ def test_user_can_delete_own_document_and_stored_file(tmp_path, settings) -> Non
             "PDF document must contain at least one page.",
         ),
         (
-            pdf_upload(content_type="text/plain"),
-            "Uploaded file must have a PDF content type.",
-        ),
-        (
             pdf_upload(content=b"%PDF-" + b"0" * MAX_DOCUMENT_SIZE),
             "Document must be 10 MB or smaller.",
         ),
@@ -217,6 +221,50 @@ def test_upload_rejects_invalid_documents(uploaded_file, expected_error: str) ->
 
     assert response.status_code == 400
     assert expected_error in str(response.data["file"])
+
+
+def test_upload_uses_server_detected_content_type() -> None:
+    client, user = authenticated_client()
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content_type="text/plain")},
+        format="multipart",
+    )
+
+    assert response.status_code == 201
+    assert response.data["content_type"] == "application/pdf"
+    assert Document.objects.get(owner=user).content_type == "application/pdf"
+
+
+def test_upload_rejects_pdf_over_page_limit(settings) -> None:
+    settings.DOCUMENT_MAX_PAGE_COUNT = 1
+    client, _ = authenticated_client()
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=create_pdf_content(page_count=2))},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "cannot contain more than 1 pages" in str(response.data["file"])
+
+
+def test_streaming_upload_limit_stops_oversized_file(settings) -> None:
+    settings.DOCUMENT_MAX_FILE_SIZE = 1024 * 1024
+    client, _ = authenticated_client()
+    oversized_upload = pdf_upload(content=b"%PDF-" + b"0" * (1024 * 1024))
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": oversized_upload},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "Document must be 1 MB or smaller" in str(response.data["file"])
+    assert Document.objects.count() == 0
 
 
 def test_upload_queues_processing_after_transaction_commit(
@@ -299,6 +347,25 @@ def test_processing_marks_textless_pdf_failed(tmp_path, settings) -> None:
     assert document.status == Document.Status.FAILED
     assert document.failure_reason == "No extractable text was found in this PDF."
     assert not DocumentContent.objects.filter(document=document).exists()
+
+
+def test_processing_rejects_extracted_text_over_safety_limit(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    settings.DOCUMENT_MAX_EXTRACTED_CHARACTERS = 5
+    _, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(content=create_pdf_content(text="Too much text")),
+        original_filename="large-text.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    services.process_document(document.id)
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.FAILED
+    assert document.failure_reason == "Extracted document text exceeds the configured safety limit."
 
 
 def test_owner_can_get_ready_extracted_content(tmp_path, settings) -> None:
@@ -533,3 +600,123 @@ def test_document_upload_is_rate_limited(monkeypatch) -> None:
 
     assert first_response.status_code == 201
     assert second_response.status_code == 429
+
+
+def test_owner_can_retry_failed_document(django_capture_on_commit_callbacks, monkeypatch) -> None:
+    client, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(),
+        original_filename="failed.pdf",
+        content_type="application/pdf",
+        file_size=100,
+        status=Document.Status.FAILED,
+        failure_reason="Previous failure",
+    )
+    queued_document_ids = []
+    monkeypatch.setattr(services, "enqueue_document_processing", queued_document_ids.append)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(reverse("document-retry", args=[document.id]))
+
+    assert response.status_code == 202
+    assert response.data["status"] == Document.Status.PENDING
+    assert response.data["failure_reason"] == ""
+    assert queued_document_ids == [document.id]
+
+
+def test_retry_rejects_document_that_is_not_failed() -> None:
+    client, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(),
+        original_filename="pending.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    response = client.post(reverse("document-retry", args=[document.id]))
+
+    assert response.status_code == 409
+    assert response.data["detail"] == "Only failed documents can be retried."
+
+
+def test_user_cannot_retry_another_users_document() -> None:
+    client, _ = authenticated_client("first-user")
+    other_user = get_user_model().objects.create_user(username="second-user")
+    document = Document.objects.create(
+        owner=other_user,
+        file=pdf_upload(),
+        original_filename="private.pdf",
+        content_type="application/pdf",
+        file_size=100,
+        status=Document.Status.FAILED,
+    )
+
+    response = client.post(reverse("document-retry", args=[document.id]))
+
+    assert response.status_code == 404
+
+
+def test_retention_cleanup_deletes_only_expired_documents_and_files(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    settings.DOCUMENT_RETENTION_DAYS = 30
+    _, user = authenticated_client()
+    expired = Document.objects.create(
+        owner=user,
+        file=pdf_upload("expired.pdf"),
+        original_filename="expired.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+    current = Document.objects.create(
+        owner=user,
+        file=pdf_upload("current.pdf", content=create_pdf_content(text="current")),
+        original_filename="current.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+    expired_path = tmp_path / expired.file.name
+    Document.objects.filter(pk=expired.pk).update(created_at=timezone.now() - timedelta(days=31))
+
+    deleted_count = services.delete_expired_documents(now=timezone.now())
+
+    assert deleted_count == 1
+    assert not Document.objects.filter(pk=expired.pk).exists()
+    assert not expired_path.exists()
+    assert Document.objects.filter(pk=current.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_duplicate_uploads_create_one_document(
+    monkeypatch,
+    tmp_path,
+    settings,
+) -> None:
+    if connection.vendor != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is covered in CI.")
+
+    settings.DOCUMENT_ROOT = tmp_path
+    user = get_user_model().objects.create_user(username="concurrent-user")
+    scan_barrier = Barrier(2)
+    monkeypatch.setattr(services, "scan_uploaded_document", lambda _file: scan_barrier.wait())
+    monkeypatch.setattr(services, "enqueue_document_processing", lambda _document_id: None)
+
+    def upload_document() -> str:
+        close_old_connections()
+        try:
+            services.create_document(
+                owner=user,
+                uploaded_file=pdf_upload(content=create_pdf_content(text="Same content")),
+            )
+            return "created"
+        except DRFValidationError:
+            return "duplicate"
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(lambda _index: upload_document(), range(2)))
+
+    assert sorted(outcomes) == ["created", "duplicate"]
+    assert Document.objects.filter(owner=user).count() == 1
