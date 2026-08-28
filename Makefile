@@ -1,4 +1,4 @@
-.PHONY: install run db-up db-down migrate migrations test lint check docker-build
+.PHONY: install run worker db-up db-down migrate migrations test lint check docker-build
 
 install:
 	python -m pip install -r requirements.txt
@@ -6,8 +6,11 @@ install:
 run:
 	python manage.py runserver 0.0.0.0:8000
 
+worker:
+	celery -A config worker --loglevel=INFO
+
 db-up:
-	docker compose up -d postgres pgadmin
+	docker compose up -d postgres pgadmin redis clamav
 
 db-down:
 	docker compose down

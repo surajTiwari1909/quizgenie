@@ -20,7 +20,7 @@ AI_project/
 ├── Dockerfile             Production container image
 ├── .dockerignore          Files excluded from the image
 ├── .github/workflows/     Pull-request checks and image build
-├── compose.yaml          Local PostgreSQL and pgAdmin containers
+├── compose.yaml          Local PostgreSQL, pgAdmin, Redis, and ClamAV containers
 ├── docker/pgadmin/       Preconfigured pgAdmin server connection
 ├── Makefile              Short development commands
 └── .env.example          Environment-variable example
@@ -38,6 +38,67 @@ multiplayer/              Live contests
 
 Each app will own its models, migrations, API views, services, and tests. We will create an app
 only when its implementation chunk is selected.
+
+## Documents
+
+Authenticated users can upload and manage PDF study material:
+
+```text
+GET    /documents       List the authenticated user's documents
+POST   /documents       Upload a PDF document
+GET    /documents/<id>  Get an owned document
+DELETE /documents/<id>  Delete an owned document and its stored file
+GET    /documents/<id>/content   Get extracted text when processing is ready
+GET    /documents/<id>/download  Securely download an owned document
+```
+
+Upload a PDF with a multipart request:
+
+```bash
+curl -X POST http://localhost:8000/documents \
+  -H "Authorization: Bearer <access-token>" \
+  -F "file=@study-notes.pdf"
+```
+
+Uploads are limited to PDF files no larger than 10 MB. Each upload is structurally parsed before
+storage; corrupt, truncated, encrypted, password-protected, and zero-page PDFs are rejected. New
+documents begin with a `pending` processing status. AI quiz generation is intentionally handled
+by a later chunk.
+
+Document extraction runs in a Celery worker. Its status moves through:
+
+```text
+pending -> processing -> ready
+                      -> failed
+```
+
+Successful processing stores extracted text, page count, and character count in a one-to-one
+document-content record. Textless or unreadable PDFs become `failed` with a safe failure reason.
+Original PDFs are stored under `private_documents/`, outside the public media URL, and can only
+be downloaded through the authenticated download endpoint.
+
+Start PostgreSQL, pgAdmin, and Redis, then run the API and worker in separate terminals:
+
+```bash
+make db-up
+make run
+make worker
+```
+
+The worker uses `CELERY_BROKER_URL`, which defaults locally to `redis://localhost:6379/0`.
+
+Document uploads also have the following abuse and storage controls:
+
+- SHA-256 duplicate detection per user.
+- A default limit of 20 stored documents per user.
+- A default total storage limit of 100 MB per user.
+- A default authenticated upload rate of 10 requests per hour.
+- Fail-closed malware scanning through ClamAV before a file is stored.
+
+The limits can be changed with `DOCUMENT_MAX_COUNT_PER_USER` and
+`DOCUMENT_MAX_TOTAL_BYTES_PER_USER`. ClamAV may need a short initialization period after
+`make db-up` while its signature database becomes ready. Set `CLAMAV_ENABLED=false` only in a
+trusted development environment where malware scanning is intentionally unavailable.
 
 ## Authentication
 
@@ -86,7 +147,7 @@ make run
 
 ## PostgreSQL and pgAdmin
 
-`make db-up` starts both PostgreSQL and pgAdmin. Open pgAdmin at
+`make db-up` starts PostgreSQL, pgAdmin, Redis, and ClamAV. Open pgAdmin at
 `http://localhost:5050` and sign in with the development defaults:
 
 ```text
@@ -166,7 +227,7 @@ make docker-build
 docker run --env-file .env -p 8000:8000 quizgenie:local
 ```
 
-Stop PostgreSQL and pgAdmin without deleting their named volumes:
+Stop PostgreSQL, pgAdmin, Redis, and ClamAV without deleting their named volumes:
 
 ```bash
 make db-down

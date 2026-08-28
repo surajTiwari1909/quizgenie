@@ -1,0 +1,70 @@
+from pathlib import Path
+from uuid import uuid4
+
+from django.conf import settings
+from django.db import models
+from django.db.models import Q
+
+from documents.storage import private_document_storage
+from documents.validators import validate_pdf_document
+
+
+def document_upload_path(document: "Document", filename: str) -> str:
+    extension = Path(filename).suffix.lower()
+    return f"documents/{document.owner_id}/{uuid4().hex}{extension}"
+
+
+class Document(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        READY = "ready", "Ready"
+        FAILED = "failed", "Failed"
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="documents",
+    )
+    file = models.FileField(
+        upload_to=document_upload_path,
+        storage=private_document_storage,
+        validators=[validate_pdf_document],
+    )
+    original_filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    file_size = models.PositiveBigIntegerField()
+    checksum_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    failure_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("owner", "checksum_sha256"),
+                condition=~Q(checksum_sha256=""),
+                name="unique_document_checksum_per_owner",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.original_filename
+
+
+class DocumentContent(models.Model):
+    document = models.OneToOneField(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="content",
+    )
+    text = models.TextField()
+    page_count = models.PositiveIntegerField()
+    character_count = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Extracted content for {self.document.original_filename}"
