@@ -5,19 +5,46 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from rest_framework.test import APIClient
 
-from documents.models import Document
+from documents import services
+from documents.models import Document, DocumentContent
+from documents.tasks import process_document_task
 from documents.validators import MAX_DOCUMENT_SIZE
 
 pytestmark = pytest.mark.django_db
 
 
-def create_pdf_content(*, encrypted: bool = False, include_page: bool = True) -> bytes:
+def create_pdf_content(
+    *,
+    encrypted: bool = False,
+    include_page: bool = True,
+    text: str | None = None,
+) -> bytes:
     content = BytesIO()
     writer = PdfWriter()
     if include_page:
-        writer.add_blank_page(width=72, height=72)
+        page = writer.add_blank_page(width=200, height=200)
+        if text:
+            font = DictionaryObject(
+                {
+                    NameObject("/Type"): NameObject("/Font"),
+                    NameObject("/Subtype"): NameObject("/Type1"),
+                    NameObject("/BaseFont"): NameObject("/Helvetica"),
+                }
+            )
+            resources = DictionaryObject(
+                {
+                    NameObject("/Font"): DictionaryObject(
+                        {NameObject("/F1"): writer._add_object(font)}  # noqa: SLF001
+                    )
+                }
+            )
+            stream = DecodedStreamObject()
+            stream.set_data(f"BT /F1 12 Tf 10 100 Td ({text}) Tj ET".encode())
+            page[NameObject("/Resources")] = resources
+            page[NameObject("/Contents")] = writer._add_object(stream)  # noqa: SLF001
     if encrypted:
         writer.encrypt("secret-password")
     writer.write(content)
@@ -55,7 +82,7 @@ def test_document_endpoints_require_authentication() -> None:
 
 
 def test_user_can_upload_pdf(tmp_path, settings) -> None:
-    settings.MEDIA_ROOT = tmp_path
+    settings.DOCUMENT_ROOT = tmp_path
     client, user = authenticated_client()
     uploaded_file = pdf_upload()
 
@@ -70,7 +97,7 @@ def test_user_can_upload_pdf(tmp_path, settings) -> None:
     assert response.data["content_type"] == "application/pdf"
     assert response.data["file_size"] == uploaded_file.size
     assert response.data["status"] == "pending"
-    assert response.data["file_url"].startswith("http://testserver/media/documents/")
+    assert response.data["download_url"].endswith(f"/documents/{response.data['id']}/download")
     document = Document.objects.get(owner=user)
     assert document.file.name.startswith(f"documents/{user.id}/")
     assert (tmp_path / document.file.name).is_file()
@@ -133,7 +160,7 @@ def test_user_cannot_get_another_users_document() -> None:
 
 
 def test_user_can_delete_own_document_and_stored_file(tmp_path, settings) -> None:
-    settings.MEDIA_ROOT = tmp_path
+    settings.DOCUMENT_ROOT = tmp_path
     client, user = authenticated_client()
     upload_response = client.post(
         reverse("document-list"),
@@ -188,3 +215,196 @@ def test_upload_rejects_invalid_documents(uploaded_file, expected_error: str) ->
 
     assert response.status_code == 400
     assert expected_error in str(response.data["file"])
+
+
+def test_upload_queues_processing_after_transaction_commit(
+    django_capture_on_commit_callbacks,
+    monkeypatch,
+) -> None:
+    client, _ = authenticated_client()
+    queued_document_ids = []
+    monkeypatch.setattr(process_document_task, "delay", queued_document_ids.append)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(
+            reverse("document-list"),
+            {"file": pdf_upload()},
+            format="multipart",
+        )
+
+    assert response.status_code == 201
+    assert queued_document_ids == [response.data["id"]]
+
+
+def test_processing_extracts_text_and_marks_document_ready(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    _, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(content=create_pdf_content(text="Quiz content from PDF")),
+        original_filename="notes.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    services.process_document(document.id)
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.READY
+    assert document.failure_reason == ""
+    assert document.content.text == "Quiz content from PDF"
+    assert document.content.page_count == 1
+    assert document.content.character_count == len("Quiz content from PDF")
+
+
+def test_processing_sets_processing_status_before_extraction(monkeypatch) -> None:
+    _, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(),
+        original_filename="notes.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    def extraction_stub(processing_document: Document) -> services.ExtractedDocument:
+        processing_document.refresh_from_db()
+        assert processing_document.status == Document.Status.PROCESSING
+        return services.ExtractedDocument(text="Extracted", page_count=1)
+
+    monkeypatch.setattr(services, "extract_document_content", extraction_stub)
+
+    services.process_document(document.id)
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.READY
+
+
+def test_processing_marks_textless_pdf_failed(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    _, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(),
+        original_filename="blank.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    services.process_document(document.id)
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.FAILED
+    assert document.failure_reason == "No extractable text was found in this PDF."
+    assert not DocumentContent.objects.filter(document=document).exists()
+
+
+def test_owner_can_get_ready_extracted_content(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    client, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(content=create_pdf_content(text="Study material")),
+        original_filename="notes.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+    services.process_document(document.id)
+
+    response = client.get(reverse("document-content", args=[document.id]))
+
+    assert response.status_code == 200
+    assert response.data["text"] == "Study material"
+    assert response.data["page_count"] == 1
+
+
+def test_pending_document_content_returns_conflict() -> None:
+    client, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(),
+        original_filename="notes.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    response = client.get(reverse("document-content", args=[document.id]))
+
+    assert response.status_code == 409
+
+
+def test_owner_can_download_document_securely(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    client, user = authenticated_client()
+    pdf_content = create_pdf_content(text="Private study material")
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(content=pdf_content),
+        original_filename="private notes.pdf",
+        content_type="application/pdf",
+        file_size=len(pdf_content),
+    )
+
+    response = client.get(reverse("document-download", args=[document.id]))
+
+    assert response.status_code == 200
+    assert b"".join(response.streaming_content) == pdf_content
+    assert response["Content-Type"] == "application/pdf"
+    assert "attachment;" in response["Content-Disposition"]
+
+
+def test_user_cannot_download_another_users_document() -> None:
+    client, _ = authenticated_client("first-user")
+    other_user = get_user_model().objects.create_user(username="second-user")
+    document = Document.objects.create(
+        owner=other_user,
+        file=pdf_upload(),
+        original_filename="private.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    response = client.get(reverse("document-download", args=[document.id]))
+
+    assert response.status_code == 404
+
+
+def test_user_cannot_get_another_users_extracted_content() -> None:
+    client, _ = authenticated_client("first-user")
+    other_user = get_user_model().objects.create_user(username="second-user")
+    document = Document.objects.create(
+        owner=other_user,
+        file=pdf_upload(),
+        original_filename="private.pdf",
+        content_type="application/pdf",
+        file_size=100,
+        status=Document.Status.READY,
+    )
+    DocumentContent.objects.create(
+        document=document,
+        text="Private extracted content",
+        page_count=1,
+        character_count=25,
+    )
+
+    response = client.get(reverse("document-content", args=[document.id]))
+
+    assert response.status_code == 404
+
+
+def test_celery_task_processes_document_in_eager_test_mode(tmp_path, settings) -> None:
+    settings.DOCUMENT_ROOT = tmp_path
+    _, user = authenticated_client()
+    document = Document.objects.create(
+        owner=user,
+        file=pdf_upload(content=create_pdf_content(text="Background content")),
+        original_filename="background.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    process_document_task.delay(document.id)
+
+    document.refresh_from_db()
+    assert document.status == Document.Status.READY
+    assert document.content.text == "Background content"
