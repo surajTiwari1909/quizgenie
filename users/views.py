@@ -52,3 +52,6 @@ def refresh_token(request: Request) -> Response:
 @permission_classes([IsAuthenticated])
 def me(request: Request) -> Response:
     return Response(UserResponseSerializer(request.user).data)
+
+
+# dumy text
