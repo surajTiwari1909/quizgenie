@@ -17,6 +17,9 @@ AI_project/
 ├── users/                Function-based authentication views and services
 ├── manage.py             Django command entry point
 ├── requirements.txt      Python dependencies
+├── Dockerfile             Production container image
+├── .dockerignore          Files excluded from the image
+├── .github/workflows/     Pull-request checks and image build
 ├── compose.yaml          Local PostgreSQL and pgAdmin containers
 ├── docker/pgadmin/       Preconfigured pgAdmin server connection
 ├── Makefile              Short development commands
@@ -112,6 +115,23 @@ make migrations    # Create migrations after a model change
 make migrate       # Apply migrations
 make test          # Run tests
 make lint          # Run the linter
+make docker-build  # Build the local Docker image
+```
+
+## Pull-request checks and Docker image
+
+Every pull request and every push to `main` runs the same checks in GitHub Actions:
+
+1. Install Python dependencies.
+2. Run linting, tests, and Django system checks.
+3. Build the `quizgenie:ci` Docker image.
+
+The workflow validates the image but does not publish it to a registry. Build and run it locally
+with:
+
+```bash
+make docker-build
+docker run --env-file .env -p 8000:8000 quizgenie:local
 ```
 
 Stop PostgreSQL and pgAdmin without deleting their named volumes:

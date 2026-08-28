@@ -1,4 +1,4 @@
-.PHONY: install run db-up db-down migrate migrations test lint check
+.PHONY: install run db-up db-down migrate migrations test lint check docker-build
 
 install:
 	.venv/bin/python -m pip install -r requirements.txt
@@ -26,3 +26,6 @@ lint:
 
 check: lint test
 	.venv/bin/python manage.py check
+
+docker-build:
+	docker build -t quizgenie:local .
