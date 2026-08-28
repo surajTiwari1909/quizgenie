@@ -1,10 +1,10 @@
 .PHONY: install run db-up db-down migrate migrations test lint check docker-build
 
 install:
-	.venv/bin/python -m pip install -r requirements.txt
+	python -m pip install -r requirements.txt
 
 run:
-	.venv/bin/python manage.py runserver 0.0.0.0:8000
+	python manage.py runserver 0.0.0.0:8000
 
 db-up:
 	docker compose up -d postgres pgadmin
@@ -13,19 +13,19 @@ db-down:
 	docker compose down
 
 migrate:
-	.venv/bin/python manage.py migrate
+	python manage.py migrate
 
 migrations:
-	.venv/bin/python manage.py makemigrations
+	python manage.py makemigrations
 
 test:
-	.venv/bin/pytest
+	python -m pytest
 
 lint:
-	.venv/bin/ruff check .
+	python -m ruff check .
 
 check: lint test
-	.venv/bin/python manage.py check
+	python manage.py check
 
 docker-build:
 	docker build -t quizgenie:local .
