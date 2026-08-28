@@ -39,6 +39,29 @@ multiplayer/              Live contests
 Each app will own its models, migrations, API views, services, and tests. We will create an app
 only when its implementation chunk is selected.
 
+## Documents
+
+Authenticated users can upload and manage PDF study material:
+
+```text
+GET    /documents       List the authenticated user's documents
+POST   /documents       Upload a PDF document
+GET    /documents/<id>  Get an owned document
+DELETE /documents/<id>  Delete an owned document and its stored file
+```
+
+Upload a PDF with a multipart request:
+
+```bash
+curl -X POST http://localhost:8000/documents \
+  -H "Authorization: Bearer <access-token>" \
+  -F "file=@study-notes.pdf"
+```
+
+Uploads are limited to PDF files no larger than 10 MB. New documents begin with a `pending`
+processing status. Text extraction and AI quiz generation are intentionally handled by later
+chunks.
+
 ## Authentication
 
 The `users` app provides function-based JWT endpoints:
