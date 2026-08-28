@@ -16,6 +16,11 @@ class SignupSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
 
+
 class SigninSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField(trim_whitespace=False)
