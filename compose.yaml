@@ -35,6 +35,22 @@ services:
       postgres:
         condition: service_healthy
 
+  redis:
+    image: redis:7-alpine
+    container_name: ai_quiz_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - quiz_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
 volumes:
   quiz_postgres_data:
   pgadmin_data:
+  quiz_redis_data:

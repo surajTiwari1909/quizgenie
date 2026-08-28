@@ -20,7 +20,7 @@ AI_project/
 ├── Dockerfile             Production container image
 ├── .dockerignore          Files excluded from the image
 ├── .github/workflows/     Pull-request checks and image build
-├── compose.yaml          Local PostgreSQL and pgAdmin containers
+├── compose.yaml          Local PostgreSQL, pgAdmin, and Redis containers
 ├── docker/pgadmin/       Preconfigured pgAdmin server connection
 ├── Makefile              Short development commands
 └── .env.example          Environment-variable example
@@ -48,6 +48,8 @@ GET    /documents       List the authenticated user's documents
 POST   /documents       Upload a PDF document
 GET    /documents/<id>  Get an owned document
 DELETE /documents/<id>  Delete an owned document and its stored file
+GET    /documents/<id>/content   Get extracted text when processing is ready
+GET    /documents/<id>/download  Securely download an owned document
 ```
 
 Upload a PDF with a multipart request:
@@ -60,8 +62,30 @@ curl -X POST http://localhost:8000/documents \
 
 Uploads are limited to PDF files no larger than 10 MB. Each upload is structurally parsed before
 storage; corrupt, truncated, encrypted, password-protected, and zero-page PDFs are rejected. New
-documents begin with a `pending` processing status. Text extraction and AI quiz generation are
-intentionally handled by later chunks.
+documents begin with a `pending` processing status. AI quiz generation is intentionally handled
+by a later chunk.
+
+Document extraction runs in a Celery worker. Its status moves through:
+
+```text
+pending -> processing -> ready
+                      -> failed
+```
+
+Successful processing stores extracted text, page count, and character count in a one-to-one
+document-content record. Textless or unreadable PDFs become `failed` with a safe failure reason.
+Original PDFs are stored under `private_documents/`, outside the public media URL, and can only
+be downloaded through the authenticated download endpoint.
+
+Start PostgreSQL, pgAdmin, and Redis, then run the API and worker in separate terminals:
+
+```bash
+make db-up
+make run
+make worker
+```
+
+The worker uses `CELERY_BROKER_URL`, which defaults locally to `redis://localhost:6379/0`.
 
 ## Authentication
 
@@ -110,7 +134,7 @@ make run
 
 ## PostgreSQL and pgAdmin
 
-`make db-up` starts both PostgreSQL and pgAdmin. Open pgAdmin at
+`make db-up` starts PostgreSQL, pgAdmin, and Redis. Open pgAdmin at
 `http://localhost:5050` and sign in with the development defaults:
 
 ```text
@@ -190,7 +214,7 @@ make docker-build
 docker run --env-file .env -p 8000:8000 quizgenie:local
 ```
 
-Stop PostgreSQL and pgAdmin without deleting their named volumes:
+Stop PostgreSQL, pgAdmin, and Redis without deleting their named volumes:
 
 ```bash
 make db-down
