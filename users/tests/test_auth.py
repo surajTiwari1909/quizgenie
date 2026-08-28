@@ -4,6 +4,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from profiles.models import Profile
+from users import services
 
 pytestmark = pytest.mark.django_db
 
@@ -84,3 +85,88 @@ def test_access_token_authenticates_me_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.data == {"id": user.id, "username": "learner", "email": ""}
+
+
+def authenticated_client_with_tokens(username: str = "learner") -> tuple[APIClient, object, dict]:
+    user = get_user_model().objects.create_user(username=username)
+    tokens = services.issue_tokens(user)
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+    return client, user, tokens
+
+
+def test_logout_requires_authentication() -> None:
+    user = get_user_model().objects.create_user(username="learner")
+    tokens = services.issue_tokens(user)
+
+    response = APIClient().post(
+        reverse("logout"),
+        {"refresh": tokens["refresh"]},
+        format="json",
+    )
+
+    assert response.status_code == 401
+
+
+def test_logout_revokes_refresh_token() -> None:
+    client, _, tokens = authenticated_client_with_tokens()
+
+    logout_response = client.post(
+        reverse("logout"),
+        {"refresh": tokens["refresh"]},
+        format="json",
+    )
+    refresh_response = APIClient().post(
+        reverse("token-refresh"),
+        {"refresh": tokens["refresh"]},
+        format="json",
+    )
+
+    assert logout_response.status_code == 204
+    assert refresh_response.status_code == 401
+
+
+def test_logout_rejects_another_users_refresh_token() -> None:
+    client, _, _ = authenticated_client_with_tokens("first-user")
+    second_user = get_user_model().objects.create_user(username="second-user")
+    second_tokens = services.issue_tokens(second_user)
+
+    logout_response = client.post(
+        reverse("logout"),
+        {"refresh": second_tokens["refresh"]},
+        format="json",
+    )
+    refresh_response = APIClient().post(
+        reverse("token-refresh"),
+        {"refresh": second_tokens["refresh"]},
+        format="json",
+    )
+
+    assert logout_response.status_code == 400
+    assert "refresh" in logout_response.data
+    assert refresh_response.status_code == 200
+
+
+def test_logout_rejects_invalid_refresh_token() -> None:
+    client, _, _ = authenticated_client_with_tokens()
+
+    response = client.post(
+        reverse("logout"),
+        {"refresh": "not-a-token"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "refresh" in response.data
+
+
+def test_logout_rejects_already_revoked_refresh_token() -> None:
+    client, _, tokens = authenticated_client_with_tokens()
+    payload = {"refresh": tokens["refresh"]}
+
+    first_response = client.post(reverse("logout"), payload, format="json")
+    second_response = client.post(reverse("logout"), payload, format="json")
+
+    assert first_response.status_code == 204
+    assert second_response.status_code == 400
+    assert "refresh" in second_response.data

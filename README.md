@@ -47,6 +47,7 @@ The `users` app provides function-based JWT endpoints:
 POST /auth/signup          Create a user and an empty profile
 POST /auth/signin          Return access and refresh tokens
 POST /auth/token/refresh   Get a new access token
+POST /auth/logout          Revoke a refresh token
 GET  /auth/me              Return the authenticated user
 ```
 
@@ -58,6 +59,18 @@ Authorization: Bearer <access-token>
 ```
 
 Access tokens expire after 15 minutes; refresh tokens expire after 7 days.
+
+To log out, send both the access token and the refresh token that should be revoked:
+
+```bash
+curl -X POST http://localhost:8000/auth/logout \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"refresh":"<refresh-token>"}'
+```
+
+A successful logout returns `204 No Content`. The revoked refresh token cannot be used to issue
+another access token. The current access token remains valid until its short expiration time.
 
 ## Local setup
 

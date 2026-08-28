@@ -5,6 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 from rest_framework.request import Request
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -59,5 +60,25 @@ def issue_tokens(user: User) -> dict[str, str]:
 def refresh_tokens(data: dict[str, Any]) -> dict[str, Any]:
     """Validate a refresh token and return its new access token."""
     serializer = TokenRefreshSerializer(data=data)
-    serializer.is_valid(raise_exception=True)
+    try:
+        serializer.is_valid(raise_exception=True)
+    except TokenError as error:
+        raise InvalidToken("Refresh token is invalid, expired, or revoked.") from error
     return serializer.validated_data
+
+
+def revoke_refresh_token(*, user: User, refresh_token: str) -> None:
+    """Blacklist a refresh token owned by the authenticated user."""
+    try:
+        token = RefreshToken(refresh_token)
+    except TokenError as error:
+        raise serializers.ValidationError(
+            {"refresh": "Invalid, expired, or already revoked refresh token."}
+        ) from error
+
+    if str(token.get("user_id")) != str(user.pk):
+        raise serializers.ValidationError(
+            {"refresh": "This refresh token does not belong to the authenticated user."}
+        )
+
+    token.blacklist()
