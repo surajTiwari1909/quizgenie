@@ -97,6 +97,25 @@ The database stores only the relative file path. Uploaded profile pictures are l
 and the supported extensions are JPG, JPEG, PNG, and WebP. The `media/` directory is ignored by
 Git. Production media should later use external object storage instead of the application disk.
 
+Authenticated users can upload or replace their profile picture with a multipart request:
+
+```bash
+curl -X PUT http://localhost:8000/profiles/me/picture \
+  -H "Authorization: Bearer <access-token>" \
+  -F "profile_picture=@avatar.png"
+```
+
+The response contains an absolute URL for the stored picture:
+
+```json
+{
+  "profile_picture_url": "http://localhost:8000/media/profiles/12/generated-name.png"
+}
+```
+
+The endpoint accepts JPG, JPEG, PNG, and WebP images up to 5 MB. Uploading another image
+replaces the current picture and removes the former file.
+
 The API listens on `http://localhost:8000` by default:
 
 - `GET /health` checks that the API process is running.
