@@ -13,6 +13,7 @@ AI_project/
 ├── core/                 Shared health endpoints and common foundations
 │   ├── migrations/       Database migrations owned by the core app
 │   └── tests/            Tests owned by the core app
+├── profiles/             One-to-one user profile records
 ├── manage.py             Django command entry point
 ├── requirements.txt      Python dependencies
 ├── compose.yaml          Local PostgreSQL and pgAdmin containers
@@ -59,6 +60,18 @@ Password: admin_password
 The `AI Quiz PostgreSQL` server is registered automatically. When pgAdmin asks for the database
 password, use `quiz_password`. These values come from `.env` and should be changed outside local
 development.
+
+## Media storage
+
+Profile pictures are optional and are stored locally during development under:
+
+```text
+media/profiles/<user-id>/<generated-file-name>
+```
+
+The database stores only the relative file path. Uploaded profile pictures are limited to 5 MB
+and the supported extensions are JPG, JPEG, PNG, and WebP. The `media/` directory is ignored by
+Git. Production media should later use external object storage instead of the application disk.
 
 The API listens on `http://localhost:8000` by default:
 

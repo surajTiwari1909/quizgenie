@@ -9,4 +9,3 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
-
