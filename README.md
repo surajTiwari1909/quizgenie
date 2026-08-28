@@ -50,6 +50,7 @@ GET    /documents/<id>  Get an owned document
 DELETE /documents/<id>  Delete an owned document and its stored file
 GET    /documents/<id>/content   Get extracted text when processing is ready
 GET    /documents/<id>/download  Securely download an owned document
+POST   /documents/<id>/retry     Retry processing for an owned failed document
 ```
 
 Upload a PDF with a multipart request:
@@ -60,10 +61,12 @@ curl -X POST http://localhost:8000/documents \
   -F "file=@study-notes.pdf"
 ```
 
-Uploads are limited to PDF files no larger than 10 MB. Each upload is structurally parsed before
-storage; corrupt, truncated, encrypted, password-protected, and zero-page PDFs are rejected. New
-documents begin with a `pending` processing status. AI quiz generation is intentionally handled
-by a later chunk.
+Uploads are limited to PDF files no larger than 10 MB and 250 pages. The byte limit is enforced
+while the multipart body is streamed. Each upload is structurally parsed before storage; corrupt,
+truncated, encrypted, password-protected, and zero-page PDFs are rejected. The stored content type
+is derived from that structural validation rather than trusted multipart metadata. New documents
+begin with a `pending` processing status. AI quiz generation is intentionally handled by a later
+chunk.
 
 Document extraction runs in a Celery worker. Its status moves through:
 
@@ -94,9 +97,12 @@ Document uploads also have the following abuse and storage controls:
 - A default total storage limit of 100 MB per user.
 - A default authenticated upload rate of 10 requests per hour.
 - Fail-closed malware scanning through ClamAV before a file is stored.
+- Worker soft/hard processing deadlines and a maximum extracted-character limit.
+- A configurable 30-day retention period.
 
-The limits can be changed with `DOCUMENT_MAX_COUNT_PER_USER` and
-`DOCUMENT_MAX_TOTAL_BYTES_PER_USER`. ClamAV may need a short initialization period after
+The limits can be changed through the `DOCUMENT_*` environment variables in `.env.example`.
+Run `python manage.py purge_expired_documents` from a scheduler to apply the retention policy.
+Set `DOCUMENT_RETENTION_DAYS=0` to disable automatic-expiry eligibility. ClamAV may need a short initialization period after
 `make db-up` while its signature database becomes ready. Set `CLAMAV_ENABLED=false` only in a
 trusted development environment where malware scanning is intentionally unavailable.
 
