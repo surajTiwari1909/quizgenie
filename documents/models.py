@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from documents.storage import private_document_storage
 from documents.validators import validate_pdf_document
@@ -33,6 +34,7 @@ class Document(models.Model):
     original_filename = models.CharField(max_length=255)
     content_type = models.CharField(max_length=100)
     file_size = models.PositiveBigIntegerField()
+    checksum_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     failure_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -40,6 +42,13 @@ class Document(models.Model):
 
     class Meta:
         ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("owner", "checksum_sha256"),
+                condition=~Q(checksum_sha256=""),
+                name="unique_document_checksum_per_owner",
+            )
+        ]
 
     def __str__(self) -> str:
         return self.original_filename

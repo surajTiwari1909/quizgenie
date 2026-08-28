@@ -2,6 +2,7 @@ from io import BytesIO
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from pypdf import PdfWriter
@@ -11,6 +12,7 @@ from rest_framework.test import APIClient
 from documents import services
 from documents.models import Document, DocumentContent
 from documents.tasks import process_document_task
+from documents.throttles import DocumentUploadRateThrottle
 from documents.validators import MAX_DOCUMENT_SIZE
 
 pytestmark = pytest.mark.django_db
@@ -408,3 +410,126 @@ def test_celery_task_processes_document_in_eager_test_mode(tmp_path, settings) -
     document.refresh_from_db()
     assert document.status == Document.Status.READY
     assert document.content.text == "Background content"
+
+
+def test_upload_stores_sha256_checksum() -> None:
+    client, user = authenticated_client()
+    uploaded_content = create_pdf_content(text="Checksum content")
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=uploaded_content)},
+        format="multipart",
+    )
+
+    assert response.status_code == 201
+    assert len(Document.objects.get(owner=user).checksum_sha256) == 64
+
+
+def test_upload_rejects_duplicate_content() -> None:
+    client, _ = authenticated_client()
+    uploaded_content = create_pdf_content(text="Duplicate content")
+
+    first_response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload("first.pdf", content=uploaded_content)},
+        format="multipart",
+    )
+    second_response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload("renamed.pdf", content=uploaded_content)},
+        format="multipart",
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 400
+    assert "already been uploaded" in str(second_response.data["file"])
+
+
+def test_upload_rejects_document_count_over_quota(settings) -> None:
+    settings.DOCUMENT_MAX_COUNT_PER_USER = 1
+    client, user = authenticated_client()
+    Document.objects.create(
+        owner=user,
+        file=pdf_upload("existing.pdf"),
+        original_filename="existing.pdf",
+        content_type="application/pdf",
+        file_size=100,
+    )
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=create_pdf_content(text="New document"))},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "count quota" in str(response.data["file"])
+
+
+def test_upload_rejects_document_over_storage_quota(settings) -> None:
+    uploaded_content = create_pdf_content(text="Storage quota document")
+    settings.DOCUMENT_MAX_TOTAL_BYTES_PER_USER = len(uploaded_content) - 1
+    client, _ = authenticated_client()
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=uploaded_content)},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "storage quota" in str(response.data["file"])
+
+
+@pytest.mark.parametrize(
+    "scan_error",
+    [
+        "The uploaded document failed the malware scan.",
+        "Malware scanner is unavailable. Try the upload again later.",
+    ],
+)
+def test_upload_rejects_unverified_document(monkeypatch, scan_error: str) -> None:
+    client, _ = authenticated_client()
+
+    def reject_scan(_uploaded_file) -> None:
+        if "failed" in scan_error:
+            from documents.security import MalwareDetectedError
+
+            raise MalwareDetectedError(scan_error)
+        from documents.security import MalwareScannerUnavailableError
+
+        raise MalwareScannerUnavailableError(scan_error)
+
+    monkeypatch.setattr(services, "scan_uploaded_document", reject_scan)
+
+    response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=create_pdf_content(text="Scanned document"))},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert scan_error in str(response.data["file"])
+    assert Document.objects.count() == 0
+
+
+def test_document_upload_is_rate_limited(monkeypatch) -> None:
+    cache.clear()
+    monkeypatch.setattr(DocumentUploadRateThrottle, "get_rate", lambda _self: "1/hour")
+    client, _ = authenticated_client()
+
+    first_response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=create_pdf_content(text="First upload"))},
+        format="multipart",
+    )
+    second_response = client.post(
+        reverse("document-list"),
+        {"file": pdf_upload(content=create_pdf_content(text="Second upload"))},
+        format="multipart",
+    )
+    cache.clear()
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 429

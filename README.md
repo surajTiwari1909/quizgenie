@@ -20,7 +20,7 @@ AI_project/
 ├── Dockerfile             Production container image
 ├── .dockerignore          Files excluded from the image
 ├── .github/workflows/     Pull-request checks and image build
-├── compose.yaml          Local PostgreSQL, pgAdmin, and Redis containers
+├── compose.yaml          Local PostgreSQL, pgAdmin, Redis, and ClamAV containers
 ├── docker/pgadmin/       Preconfigured pgAdmin server connection
 ├── Makefile              Short development commands
 └── .env.example          Environment-variable example
@@ -87,6 +87,19 @@ make worker
 
 The worker uses `CELERY_BROKER_URL`, which defaults locally to `redis://localhost:6379/0`.
 
+Document uploads also have the following abuse and storage controls:
+
+- SHA-256 duplicate detection per user.
+- A default limit of 20 stored documents per user.
+- A default total storage limit of 100 MB per user.
+- A default authenticated upload rate of 10 requests per hour.
+- Fail-closed malware scanning through ClamAV before a file is stored.
+
+The limits can be changed with `DOCUMENT_MAX_COUNT_PER_USER` and
+`DOCUMENT_MAX_TOTAL_BYTES_PER_USER`. ClamAV may need a short initialization period after
+`make db-up` while its signature database becomes ready. Set `CLAMAV_ENABLED=false` only in a
+trusted development environment where malware scanning is intentionally unavailable.
+
 ## Authentication
 
 The `users` app provides function-based JWT endpoints:
@@ -134,7 +147,7 @@ make run
 
 ## PostgreSQL and pgAdmin
 
-`make db-up` starts PostgreSQL, pgAdmin, and Redis. Open pgAdmin at
+`make db-up` starts PostgreSQL, pgAdmin, Redis, and ClamAV. Open pgAdmin at
 `http://localhost:5050` and sign in with the development defaults:
 
 ```text
@@ -214,7 +227,7 @@ make docker-build
 docker run --env-file .env -p 8000:8000 quizgenie:local
 ```
 
-Stop PostgreSQL, pgAdmin, and Redis without deleting their named volumes:
+Stop PostgreSQL, pgAdmin, Redis, and ClamAV without deleting their named volumes:
 
 ```bash
 make db-down

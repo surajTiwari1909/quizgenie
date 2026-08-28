@@ -1,7 +1,12 @@
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    parser_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -14,11 +19,13 @@ from documents.serializers import (
     DocumentResponseSerializer,
     DocumentUploadSerializer,
 )
+from documents.throttles import DocumentUploadRateThrottle
 
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
+@throttle_classes([DocumentUploadRateThrottle])
 def document_collection(request: Request) -> Response:
     if request.method == "GET":
         documents = Document.objects.filter(owner=request.user).select_related("content")

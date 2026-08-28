@@ -50,7 +50,17 @@ services:
       timeout: 5s
       retries: 15
 
+  clamav:
+    image: clamav/clamav:1.5.4
+    container_name: ai_quiz_clamav
+    restart: unless-stopped
+    ports:
+      - "${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - quiz_clamav_data:/var/lib/clamav
+
 volumes:
   quiz_postgres_data:
   pgadmin_data:
   quiz_redis_data:
+  quiz_clamav_data:

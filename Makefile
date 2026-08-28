@@ -10,7 +10,7 @@ worker:
 	celery -A config worker --loglevel=INFO
 
 db-up:
-	docker compose up -d postgres pgadmin redis
+	docker compose up -d postgres pgadmin redis clamav
 
 db-down:
 	docker compose down

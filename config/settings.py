@@ -110,6 +110,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_RATES": {"document_upload": "10/hour"},
 }
 
 SIMPLE_JWT = {
@@ -121,6 +122,23 @@ SIMPLE_JWT = {
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_TRACK_STARTED = True
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_URL", default="redis://localhost:6379/1"),
+    }
+}
+
+DOCUMENT_MAX_COUNT_PER_USER = env.int("DOCUMENT_MAX_COUNT_PER_USER", default=20)
+DOCUMENT_MAX_TOTAL_BYTES_PER_USER = env.int(
+    "DOCUMENT_MAX_TOTAL_BYTES_PER_USER",
+    default=100 * 1024 * 1024,
+)
+CLAMAV_ENABLED = env.bool("CLAMAV_ENABLED", default=True)
+CLAMAV_HOST = env("CLAMAV_HOST", default="localhost")
+CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)
+CLAMAV_TIMEOUT = env.float("CLAMAV_TIMEOUT", default=15.0)
 
 LOGGING = {
     "version": 1,

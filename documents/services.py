@@ -3,13 +3,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 from pypdf import PdfReader
 from pypdf.errors import PyPdfError
+from rest_framework import serializers
 
 from documents.models import Document, DocumentContent
+from documents.security import (
+    MalwareDetectedError,
+    MalwareScannerUnavailableError,
+    calculate_sha256,
+    scan_uploaded_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +39,36 @@ class ExtractedDocument:
 
 def create_document(*, owner: Any, uploaded_file: UploadedFile) -> Document:
     """Validate and store an uploaded document with immutable source metadata."""
-    document = Document(
-        owner=owner,
-        file=uploaded_file,
-        original_filename=Path(uploaded_file.name).name[:255],
-        content_type=getattr(uploaded_file, "content_type", "application/octet-stream"),
-        file_size=uploaded_file.size,
-    )
+    checksum = calculate_sha256(uploaded_file)
+    _validate_document_quota(owner=owner, file_size=uploaded_file.size, checksum=checksum)
+    try:
+        scan_uploaded_document(uploaded_file)
+    except (MalwareDetectedError, MalwareScannerUnavailableError) as error:
+        raise serializers.ValidationError({"file": str(error)}) from error
+
+    with transaction.atomic():
+        locked_owner = owner.__class__.objects.select_for_update().get(pk=owner.pk)
+        _validate_document_quota(
+            owner=locked_owner,
+            file_size=uploaded_file.size,
+            checksum=checksum,
+        )
+        document = Document(
+            owner=locked_owner,
+            file=uploaded_file,
+            original_filename=Path(uploaded_file.name).name[:255],
+            content_type=getattr(uploaded_file, "content_type", "application/octet-stream"),
+            file_size=uploaded_file.size,
+            checksum_sha256=checksum,
+        )
+        _save_document(document)
+
+    transaction.on_commit(lambda: enqueue_document_processing(document.id))
+    document.refresh_from_db(fields=["status", "failure_reason", "updated_at"])
+    return document
+
+
+def _save_document(document: Document) -> None:
     try:
         document.full_clean()
         document.save()
@@ -45,9 +77,23 @@ def create_document(*, owner: Any, uploaded_file: UploadedFile) -> Document:
             document.file.storage.delete(document.file.name)
         raise
 
-    transaction.on_commit(lambda: enqueue_document_processing(document.id))
-    document.refresh_from_db(fields=["status", "failure_reason", "updated_at"])
-    return document
+
+def _validate_document_quota(*, owner: Any, file_size: int, checksum: str) -> None:
+    owned_documents = Document.objects.filter(owner=owner)
+    if owned_documents.filter(checksum_sha256=checksum).exists():
+        raise serializers.ValidationError(
+            {"file": "This document has already been uploaded."}
+        )
+    if owned_documents.count() >= settings.DOCUMENT_MAX_COUNT_PER_USER:
+        raise serializers.ValidationError(
+            {"file": "Document count quota has been reached."}
+        )
+
+    used_bytes = owned_documents.aggregate(total=Sum("file_size"))["total"] or 0
+    if used_bytes + file_size > settings.DOCUMENT_MAX_TOTAL_BYTES_PER_USER:
+        raise serializers.ValidationError(
+            {"file": "Document storage quota would be exceeded."}
+        )
 
 
 def delete_document(document: Document) -> None:
