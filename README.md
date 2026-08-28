@@ -14,6 +14,7 @@ AI_project/
 │   ├── migrations/       Database migrations owned by the core app
 │   └── tests/            Tests owned by the core app
 ├── profiles/             One-to-one user profile records
+├── users/                Function-based authentication views and services
 ├── manage.py             Django command entry point
 ├── requirements.txt      Python dependencies
 ├── compose.yaml          Local PostgreSQL and pgAdmin containers
@@ -34,6 +35,26 @@ multiplayer/              Live contests
 
 Each app will own its models, migrations, API views, services, and tests. We will create an app
 only when its implementation chunk is selected.
+
+## Authentication
+
+The `users` app provides function-based JWT endpoints:
+
+```text
+POST /auth/signup          Create a user and an empty profile
+POST /auth/signin          Return access and refresh tokens
+POST /auth/token/refresh   Get a new access token
+GET  /auth/me              Return the authenticated user
+```
+
+Signup expects `username`, `email`, and a password of at least eight characters. Use the returned
+access token on protected requests:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+Access tokens expire after 15 minutes; refresh tokens expire after 7 days.
 
 ## Local setup
 
