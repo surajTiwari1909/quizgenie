@@ -1,7 +1,10 @@
+from io import BytesIO
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from pypdf import PdfWriter
 from rest_framework.test import APIClient
 
 from documents.models import Document
@@ -10,12 +13,25 @@ from documents.validators import MAX_DOCUMENT_SIZE
 pytestmark = pytest.mark.django_db
 
 
+def create_pdf_content(*, encrypted: bool = False, include_page: bool = True) -> bytes:
+    content = BytesIO()
+    writer = PdfWriter()
+    if include_page:
+        writer.add_blank_page(width=72, height=72)
+    if encrypted:
+        writer.encrypt("secret-password")
+    writer.write(content)
+    return content.getvalue()
+
+
 def pdf_upload(
     filename: str = "study-notes.pdf",
     *,
-    content: bytes = b"%PDF-1.4\n%%EOF",
+    content: bytes | None = None,
     content_type: str = "application/pdf",
 ) -> SimpleUploadedFile:
+    if content is None:
+        content = create_pdf_content()
     return SimpleUploadedFile(filename, content, content_type=content_type)
 
 
@@ -41,17 +57,18 @@ def test_document_endpoints_require_authentication() -> None:
 def test_user_can_upload_pdf(tmp_path, settings) -> None:
     settings.MEDIA_ROOT = tmp_path
     client, user = authenticated_client()
+    uploaded_file = pdf_upload()
 
     response = client.post(
         reverse("document-list"),
-        {"file": pdf_upload()},
+        {"file": uploaded_file},
         format="multipart",
     )
 
     assert response.status_code == 201
     assert response.data["original_filename"] == "study-notes.pdf"
     assert response.data["content_type"] == "application/pdf"
-    assert response.data["file_size"] == len(b"%PDF-1.4\n%%EOF")
+    assert response.data["file_size"] == uploaded_file.size
     assert response.data["status"] == "pending"
     assert response.data["file_url"].startswith("http://testserver/media/documents/")
     document = Document.objects.get(owner=user)
@@ -138,6 +155,18 @@ def test_user_can_delete_own_document_and_stored_file(tmp_path, settings) -> Non
     [
         (pdf_upload("notes.txt"), "Only PDF documents are supported."),
         (pdf_upload(content=b"not-a-pdf"), "Uploaded file is not a valid PDF document."),
+        (
+            pdf_upload(content=b"%PDF-1.4\ntruncated"),
+            "PDF document is corrupt or structurally invalid.",
+        ),
+        (
+            pdf_upload(content=create_pdf_content(encrypted=True)),
+            "Encrypted or password-protected PDFs are not supported.",
+        ),
+        (
+            pdf_upload(content=create_pdf_content(include_page=False)),
+            "PDF document must contain at least one page.",
+        ),
         (
             pdf_upload(content_type="text/plain"),
             "Uploaded file must have a PDF content type.",

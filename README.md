@@ -58,9 +58,10 @@ curl -X POST http://localhost:8000/documents \
   -F "file=@study-notes.pdf"
 ```
 
-Uploads are limited to PDF files no larger than 10 MB. New documents begin with a `pending`
-processing status. Text extraction and AI quiz generation are intentionally handled by later
-chunks.
+Uploads are limited to PDF files no larger than 10 MB. Each upload is structurally parsed before
+storage; corrupt, truncated, encrypted, password-protected, and zero-page PDFs are rejected. New
+documents begin with a `pending` processing status. Text extraction and AI quiz generation are
+intentionally handled by later chunks.
 
 ## Authentication
 
