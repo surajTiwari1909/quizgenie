@@ -13,6 +13,22 @@ jobs:
   checks:
     name: Checks and Docker build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: quiz_game_test
+          POSTGRES_USER: quiz_user
+          POSTGRES_PASSWORD: quiz_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U quiz_user -d quiz_game_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgresql://quiz_user:quiz_password@localhost:5432/quiz_game_test
 
     steps:
       - name: Check out repository

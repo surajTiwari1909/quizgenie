@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 class DocumentExtractionError(Exception):
     """A safe, user-facing document extraction failure."""
+
+
+class InvalidDocumentState(Exception):
+    """The requested document operation is invalid for its current state."""
 
 
 @dataclass(frozen=True)
@@ -57,7 +62,9 @@ def create_document(*, owner: Any, uploaded_file: UploadedFile) -> Document:
             owner=locked_owner,
             file=uploaded_file,
             original_filename=Path(uploaded_file.name).name[:255],
-            content_type=getattr(uploaded_file, "content_type", "application/octet-stream"),
+            # Structural validation identifies the file as a PDF. Do not trust the
+            # content type supplied by the multipart client.
+            content_type="application/pdf",
             file_size=uploaded_file.size,
             checksum_sha256=checksum,
         )
@@ -112,7 +119,19 @@ def extract_document_content(document: Document) -> ExtractedDocument:
                 )
 
             page_count = len(reader.pages)
-            page_text = [(page.extract_text() or "").strip() for page in reader.pages]
+            page_text = []
+            character_count = 0
+            max_characters = settings.DOCUMENT_MAX_EXTRACTED_CHARACTERS
+            for page in reader.pages:
+                text = (page.extract_text() or "").strip()
+                if not text:
+                    continue
+                character_count += len(text)
+                if character_count > max_characters:
+                    raise DocumentExtractionError(
+                        "Extracted document text exceeds the configured safety limit."
+                    )
+                page_text.append(text)
     except DocumentExtractionError:
         raise
     except (PyPdfError, OSError, ValueError, TypeError, KeyError, EOFError) as error:
@@ -176,6 +195,34 @@ def enqueue_document_processing(document_id: int) -> None:
     except Exception:
         logger.exception("Could not queue document processing", extra={"document_id": document_id})
         _mark_document_failed(document_id, "Document processing could not be queued.")
+
+
+def retry_document_processing(document: Document) -> Document:
+    """Move one failed document back to pending and queue it after commit."""
+    with transaction.atomic():
+        locked_document = Document.objects.select_for_update().get(pk=document.pk)
+        if locked_document.status != Document.Status.FAILED:
+            raise InvalidDocumentState("Only failed documents can be retried.")
+        locked_document.status = Document.Status.PENDING
+        locked_document.failure_reason = ""
+        locked_document.save(update_fields=["status", "failure_reason", "updated_at"])
+        transaction.on_commit(lambda: enqueue_document_processing(locked_document.id))
+    return locked_document
+
+
+def delete_expired_documents(*, now=None) -> int:
+    """Delete documents older than the configured retention window and their files."""
+    retention_days = settings.DOCUMENT_RETENTION_DAYS
+    if retention_days <= 0:
+        return 0
+
+    cutoff = (now or timezone.now()) - timedelta(days=retention_days)
+    expired_ids = list(
+        Document.objects.filter(created_at__lt=cutoff).values_list("id", flat=True)
+    )
+    for document in Document.objects.filter(id__in=expired_ids).iterator():
+        document.delete()
+    return len(expired_ids)
 
 
 def _mark_document_failed(document_id: int, reason: str) -> None:
