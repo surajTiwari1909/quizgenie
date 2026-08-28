@@ -1,0 +1,9 @@
+Django>=5.2,<6
+django-environ>=0.12,<1
+djangorestframework>=3.16,<4
+gunicorn>=23,<24
+psycopg[binary]>=3.2,<4
+pytest>=8,<9
+pytest-django>=4.11,<5
+ruff>=0.9,<1
+

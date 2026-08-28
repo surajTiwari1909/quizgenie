@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ai_quiz_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quiz_game}
+      POSTGRES_USER: ${POSTGRES_USER:-quiz_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quiz_password}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - quiz_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ai_quiz_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@quiz.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin_password}
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  quiz_postgres_data:
+  pgadmin_data:
