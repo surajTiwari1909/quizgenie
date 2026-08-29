@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "core",
     "documents",
     "profiles",
+    "quizzes",
     "users",
 ]
 

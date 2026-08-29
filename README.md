@@ -14,6 +14,7 @@ AI_project/
 │   ├── migrations/       Database migrations owned by the core app
 │   └── tests/            Tests owned by the core app
 ├── profiles/             One-to-one user profile records
+├── quizzes/              Quiz, question, and answer-option persistence
 ├── users/                Function-based authentication views and services
 ├── manage.py             Django command entry point
 ├── requirements.txt      Python dependencies
@@ -38,6 +39,15 @@ multiplayer/              Live contests
 
 Each app will own its models, migrations, API views, services, and tests. We will create an app
 only when its implementation chunk is selected.
+
+## Quiz domain
+
+The `quizzes` app persists user-owned quizzes, their ordered questions, and each question's
+ordered answer options. A quiz can optionally reference the document it was generated from.
+Deleting that source document keeps the quiz and its generated content, while deleting the owner
+removes all of their quiz data. Database constraints keep question and answer ordering unique and
+allow no more than one correct answer per question. Quiz generation, gameplay, and public quiz
+API endpoints are intentionally handled by later chunks.
 
 ## Documents
 
