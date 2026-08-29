@@ -1,0 +1,26 @@
+meta {
+  name: Submit Solo Answer
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/games/solo/{{attemptId}}/answers
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "question_id": {{questionId}},
+    "answer_option_id": {{answerOptionId}}
+  }
+}
+
+assert {
+  res.status: eq 200
+}

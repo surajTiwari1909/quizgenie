@@ -1,0 +1,24 @@
+meta {
+  name: Complete Solo Attempt
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/games/solo/{{attemptId}}/complete
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  All quiz questions must have an answer before completion. The sample topic quiz has
+  one question so Submit Solo Answer is sufficient.
+}

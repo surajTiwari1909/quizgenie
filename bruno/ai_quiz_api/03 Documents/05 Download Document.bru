@@ -1,0 +1,24 @@
+meta {
+  name: Download Document
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/documents/{{documentId}}/download
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Returns the original PDF as an attachment. Use Bruno's response save control to
+  write the binary response to disk if desired.
+}

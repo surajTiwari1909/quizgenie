@@ -1,0 +1,33 @@
+meta {
+  name: Get Quiz
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/quizzes/{{quizId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.questions && res.body.questions.length > 0) {
+    bru.setEnvVar("questionId", res.body.questions[0].id);
+    if (res.body.questions[0].answer_options.length > 0) {
+      bru.setEnvVar("answerOptionId", res.body.questions[0].answer_options[0].id);
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Poll this request while generation runs. The first question and answer-option IDs
+  are saved for gameplay requests when questions are available.
+}

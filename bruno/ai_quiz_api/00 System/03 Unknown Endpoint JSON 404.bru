@@ -1,0 +1,23 @@
+meta {
+  name: Unknown Endpoint - JSON 404
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/signup
+  body: json
+  auth: none
+}
+
+body:json {
+  {}
+}
+
+assert {
+  res.status: eq 404
+}
+
+docs {
+  Confirms that a wrong URL returns JSON. The real signup path is `/auth/signup`.
+}

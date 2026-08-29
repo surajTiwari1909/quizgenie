@@ -1,0 +1,28 @@
+meta {
+  name: Update Profile Picture
+  type: http
+  seq: 1
+}
+
+put {
+  url: {{baseUrl}}/profiles/me/picture
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:multipart-form {
+  profile_picture: @file({{profilePicturePath}})
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Set `profilePicturePath` in the local environment to an absolute JPG, JPEG, PNG,
+  or WebP path before sending this request.
+}

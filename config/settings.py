@@ -40,7 +40,10 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "core",
     "documents",
+    "games",
+    "multiplayer",
     "profiles",
+    "quizzes",
     "users",
 ]
 
@@ -147,6 +150,48 @@ DOCUMENT_PROCESSING_SOFT_TIME_LIMIT = env.int(
     default=60,
 )
 DOCUMENT_PROCESSING_TIME_LIMIT = env.int("DOCUMENT_PROCESSING_TIME_LIMIT", default=75)
+GROQ_API_KEY = env("GROQ_API_KEY", default="")
+GROQ_QUIZ_MODEL = env("GROQ_QUIZ_MODEL", default="openai/gpt-oss-120b")
+QUIZ_GENERATOR_CLASS = env(
+    "QUIZ_GENERATOR_CLASS",
+    default="quizzes.providers.GroqQuestionGenerator",
+)
+QUIZ_MAX_REGENERATION_ATTEMPTS = env.int(
+    "QUIZ_MAX_REGENERATION_ATTEMPTS",
+    default=2,
+)
+QUIZ_GENERATION_REQUEST_TIMEOUT = env.float(
+    "QUIZ_GENERATION_REQUEST_TIMEOUT",
+    default=60.0,
+)
+QUIZ_GENERATION_SOFT_TIME_LIMIT = env.int(
+    "QUIZ_GENERATION_SOFT_TIME_LIMIT",
+    default=150,
+)
+QUIZ_GENERATION_TIME_LIMIT = env.int("QUIZ_GENERATION_TIME_LIMIT", default=180)
+SOLO_ATTEMPT_TIME_LIMIT_SECONDS = env.int("SOLO_ATTEMPT_TIME_LIMIT_SECONDS", default=1800)
+USE_S3_STORAGE = env.bool("USE_S3_STORAGE", default=False)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="")
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default="")
+AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default="")
+AWS_S3_SIGNATURE_VERSION = env("AWS_S3_SIGNATURE_VERSION", default="s3v4")
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = True
+AWS_S3_FILE_OVERWRITE = False
+if USE_S3_STORAGE:
+    INSTALLED_APPS.append("storages")
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {"location": "media", "file_overwrite": False},
+        },
+        "staticfiles": {
+            "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+        },
+    }
 CLAMAV_ENABLED = env.bool("CLAMAV_ENABLED", default=True)
 CLAMAV_HOST = env("CLAMAV_HOST", default="localhost")
 CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)

@@ -1,0 +1,39 @@
+meta {
+  name: Start Solo Attempt
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/games/solo/start
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "quiz_id": {{quizId}}
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("attemptId", res.body.id);
+    if (res.body.questions && res.body.questions.length > 0) {
+      bru.setEnvVar("questionId", res.body.questions[0].id);
+      bru.setEnvVar("answerOptionId", res.body.questions[0].answer_options[0].id);
+    }
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  Requires `quizId` to reference a quiz with `ready` status.
+}

@@ -13,7 +13,9 @@ AI_project/
 ├── core/                 Shared health endpoints and common foundations
 │   ├── migrations/       Database migrations owned by the core app
 │   └── tests/            Tests owned by the core app
+├── games/                Solo quiz attempts, answers, and scoring
 ├── profiles/             One-to-one user profile records
+├── quizzes/              Quiz, question, and answer-option persistence
 ├── users/                Function-based authentication views and services
 ├── manage.py             Django command entry point
 ├── requirements.txt      Python dependencies
@@ -38,6 +40,54 @@ multiplayer/              Live contests
 
 Each app will own its models, migrations, API views, services, and tests. We will create an app
 only when its implementation chunk is selected.
+
+## Quiz domain
+
+The `quizzes` app persists user-owned quizzes, their ordered questions, and each question's
+ordered answer options. A quiz can optionally reference the document it was generated from.
+Deleting that source document keeps the quiz and its generated content, while deleting the owner
+removes all of their quiz data. Database constraints keep question and answer ordering unique and
+allow no more than one correct answer per question.
+
+Authenticated topic-based generation uses these endpoints:
+
+```text
+GET  /quizzes                   List the authenticated user's quizzes
+POST /quizzes/generate/topic    Queue a topic-based quiz for generation
+GET  /quizzes/<id>              Read an owned quiz and its generation state
+POST /quizzes/<id>/retry        Retry an owned failed topic quiz
+```
+
+Generation runs in the Celery worker and moves a quiz through `generating`, `ready`, or `failed`.
+The default provider uses the Groq Chat API with strict schema-constrained output. Set
+`GROQ_API_KEY` and optionally `GROQ_QUIZ_MODEL` before running the worker. Provider output is
+still validated locally: each question must have unique answer text and exactly one correct
+option. An invalid question is regenerated independently, leaving valid questions untouched.
+`QUIZ_MAX_REGENERATION_ATTEMPTS` controls the per-question retry limit.
+
+Create a five-question quiz:
+
+```bash
+curl -X POST http://localhost:8000/quizzes/generate/topic \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"topic":"Photosynthesis","difficulty":"medium","question_count":5}'
+```
+
+## Solo gameplay
+
+Only an owned quiz in the `ready` state can be started. Correct-answer metadata remains hidden
+until the attempt is completed.
+
+```text
+POST /games/solo                         Start an attempt with a quiz ID
+GET  /games/solo/<attempt-id>            Read an owned attempt
+POST /games/solo/<attempt-id>/answers    Submit one answer
+POST /games/solo/<attempt-id>/complete   Complete and score an attempt
+```
+
+Each question can be answered once. Completion requires every question to have an answer; the
+response then includes the final score, correct options, and explanations.
 
 ## Documents
 

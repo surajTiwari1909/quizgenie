@@ -1,0 +1,26 @@
+meta {
+  name: Start Contest - Host
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/multiplayer/contests/{{contestId}}/start
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.questions && res.body.questions.length > 0) {
+    bru.setEnvVar("questionId", res.body.questions[0].id);
+    bru.setEnvVar("answerOptionId", res.body.questions[0].answer_options[0].id);
+  }
+}
+
+assert {
+  res.status: eq 200
+}

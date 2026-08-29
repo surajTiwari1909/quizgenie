@@ -2,6 +2,7 @@ from typing import Any
 
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -28,7 +29,10 @@ def register_user(user_data: dict[str, Any]) -> User:
         )
     if User.objects.filter(email__iexact=email).exists():
         raise serializers.ValidationError({"email": "A user with this email already exists."})
-    validate_password(password)
+    try:
+        validate_password(password)
+    except DjangoValidationError as error:
+        raise serializers.ValidationError({"password": error.messages}) from error
 
     return create_user({"username": username, "email": email, "password": password})
 

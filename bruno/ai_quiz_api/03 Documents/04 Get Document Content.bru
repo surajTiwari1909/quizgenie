@@ -1,0 +1,19 @@
+meta {
+  name: Get Document Content
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/documents/{{documentId}}/content
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+docs {
+  Returns `200` when processing is ready or `409` while content is not ready.
+}

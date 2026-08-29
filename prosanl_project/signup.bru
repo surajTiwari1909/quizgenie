@@ -1,0 +1,25 @@
+meta {
+  name: signup
+  type: http
+  seq: 1
+}
+
+post {
+  url: http://localhost:8000/auth/signup
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "username": "viruss01",
+    "email": "suraj@local1.com",
+    "password": "StrongPassword123!"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+  forwardAuthorizationHeader: false
+}

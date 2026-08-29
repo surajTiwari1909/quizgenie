@@ -1,0 +1,29 @@
+meta {
+  name: Logout Primary
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/auth/logout
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "refresh": "{{refreshToken}}"
+  }
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Revokes the primary refresh token. Run last.
+}

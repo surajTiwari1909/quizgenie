@@ -1,0 +1,40 @@
+meta {
+  name: Generate Topic Quiz
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/quizzes/generate/topic
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "topic": "Solar System",
+    "title": "Solar System Quiz",
+    "difficulty": "medium",
+    "question_count": 1
+  }
+}
+
+script:post-response {
+  if (res.status === 202) {
+    bru.setEnvVar("quizId", res.body.id);
+    bru.setEnvVar("topicQuizId", res.body.id);
+  }
+}
+
+assert {
+  res.status: eq 202
+}
+
+docs {
+  Quiz generation is queued. Poll Get Quiz until `status` becomes `ready` before
+  starting gameplay. One question keeps the end-to-end manual test concise.
+}
