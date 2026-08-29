@@ -1,0 +1,30 @@
+meta {
+  name: Signup Player
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/auth/signup
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "{{playerUsername}}",
+    "email": "{{playerEmail}}",
+    "password": "{{playerPassword}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("playerAccessToken", res.body.tokens.access);
+    bru.setEnvVar("playerRefreshToken", res.body.tokens.refresh);
+  }
+}
+
+docs {
+  Creates the second account used to join multiplayer contests.
+}

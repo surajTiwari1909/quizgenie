@@ -1,0 +1,19 @@
+meta {
+  name: Get Solo Attempt
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/games/solo/{{attemptId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}

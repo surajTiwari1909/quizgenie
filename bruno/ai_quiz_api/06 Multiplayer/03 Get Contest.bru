@@ -1,0 +1,23 @@
+meta {
+  name: Get Contest
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/multiplayer/contests/{{contestId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  While a contest is waiting, its question list is intentionally empty.
+}

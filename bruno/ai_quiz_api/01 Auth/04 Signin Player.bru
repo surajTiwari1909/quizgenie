@@ -1,0 +1,29 @@
+meta {
+  name: Signin Player
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/signin
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "{{playerUsername}}",
+    "password": "{{playerPassword}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("playerAccessToken", res.body.tokens.access);
+    bru.setEnvVar("playerRefreshToken", res.body.tokens.refresh);
+  }
+}
+
+assert {
+  res.status: eq 200
+}

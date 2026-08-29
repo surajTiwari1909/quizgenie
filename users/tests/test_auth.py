@@ -37,6 +37,18 @@ def test_signup_rejects_duplicate_username() -> None:
     assert "username" in response.data
 
 
+def test_signup_returns_json_validation_errors_for_weak_password() -> None:
+    payload = signup_payload()
+    payload["password"] = "123456789"
+
+    response = APIClient().post(reverse("signup"), payload, format="json")
+
+    assert response.status_code == 400
+    assert "password" in response.data
+    assert "This password is entirely numeric." in response.data["password"]
+    assert response["Content-Type"].startswith("application/json")
+
+
 def test_signin_returns_tokens_for_valid_credentials() -> None:
     get_user_model().objects.create_user(
         username="learner",

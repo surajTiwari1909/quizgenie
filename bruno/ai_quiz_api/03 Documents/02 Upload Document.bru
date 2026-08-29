@@ -1,0 +1,34 @@
+meta {
+  name: Upload Document
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/documents/
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:multipart-form {
+  file: @file({{documentPath}})
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("documentId", res.body.id);
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  Set `documentPath` to an absolute path to a valid PDF. The response document ID is
+  saved automatically. Processing may complete asynchronously depending on settings.
+}

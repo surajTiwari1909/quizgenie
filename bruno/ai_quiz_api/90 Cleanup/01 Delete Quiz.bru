@@ -1,0 +1,24 @@
+meta {
+  name: Delete Quiz
+  type: http
+  seq: 1
+}
+
+delete {
+  url: {{baseUrl}}/quizzes/{{quizId}}/manage
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Deletes the quiz and its related solo attempts and contests. Run only after all
+  gameplay requests.
+}

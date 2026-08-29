@@ -1,0 +1,26 @@
+meta {
+  name: Update Quiz
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/quizzes/{{quizId}}/manage
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "title": "Updated Quiz Title",
+    "description": "Updated through the Bruno collection"
+  }
+}
+
+assert {
+  res.status: eq 200
+}

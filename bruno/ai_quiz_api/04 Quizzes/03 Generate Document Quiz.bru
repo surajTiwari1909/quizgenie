@@ -1,0 +1,40 @@
+meta {
+  name: Generate Document Quiz
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/quizzes/generate/document
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "document_id": {{documentId}},
+    "topic": "Uploaded document",
+    "title": "Document Quiz",
+    "difficulty": "medium",
+    "question_count": 5
+  }
+}
+
+script:post-response {
+  if (res.status === 202) {
+    bru.setEnvVar("documentQuizId", res.body.id);
+  }
+}
+
+assert {
+  res.status: eq 202
+}
+
+docs {
+  Requires the uploaded document to have `ready` status and extracted content.
+  The API currently validates `topic` as well as `document_id`, so both are included.
+}

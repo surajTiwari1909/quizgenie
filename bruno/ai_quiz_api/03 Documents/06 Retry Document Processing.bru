@@ -1,0 +1,20 @@
+meta {
+  name: Retry Document Processing
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/documents/{{documentId}}/retry
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+docs {
+  This is valid only for a failed document. Expected status is `202` for a retry or
+  `409` when the current document state cannot be retried.
+}

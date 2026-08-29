@@ -1,0 +1,20 @@
+meta {
+  name: Retry Quiz Generation
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/quizzes/{{quizId}}/retry
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+docs {
+  This is valid only for a failed quiz. Expected status is `202` for a retry or
+  `409` when the current quiz state cannot be retried.
+}

@@ -1,0 +1,37 @@
+meta {
+  name: Create Contest - Host
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/multiplayer/contests
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "quiz_id": {{quizId}},
+    "max_players": 5
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setEnvVar("contestId", res.body.id);
+    bru.setEnvVar("contestCode", res.body.code);
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  Uses the primary token as host. The quiz must be ready and contain questions.
+}

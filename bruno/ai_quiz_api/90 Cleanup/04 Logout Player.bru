@@ -1,0 +1,29 @@
+meta {
+  name: Logout Player
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/logout
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{playerAccessToken}}
+}
+
+body:json {
+  {
+    "refresh": "{{playerRefreshToken}}"
+  }
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Revokes the multiplayer player's refresh token. Run last.
+}

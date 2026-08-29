@@ -1,0 +1,29 @@
+meta {
+  name: Join Contest - Player
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/multiplayer/contests/join
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{playerAccessToken}}
+}
+
+body:json {
+  {
+    "code": "{{contestCode}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Uses the second player's token saved by Signin Player.
+}

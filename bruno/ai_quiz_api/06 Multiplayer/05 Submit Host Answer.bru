@@ -1,0 +1,26 @@
+meta {
+  name: Submit Answer - Host
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/multiplayer/contests/{{contestId}}/answers
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "question_id": {{questionId}},
+    "answer_option_id": {{answerOptionId}}
+  }
+}
+
+assert {
+  res.status: eq 200
+}
