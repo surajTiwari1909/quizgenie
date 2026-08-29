@@ -25,7 +25,7 @@ class DocumentQuizGenerationSerializer(TopicQuizGenerationSerializer):
 class AnswerOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = AnswerOption
-        fields = ("id", "text", "is_correct", "order")
+        fields = ("id", "text", "order")
         read_only_fields = fields
 
 
@@ -37,10 +37,8 @@ class QuestionSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "text",
-            "explanation",
             "order",
             "points",
-            "generation_attempts",
             "answer_options",
         )
         read_only_fields = fields

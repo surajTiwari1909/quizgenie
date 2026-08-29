@@ -41,8 +41,11 @@ def test_contest_can_be_created_joined_started_answered_and_finished() -> None:
     finished = host_client.post(reverse("contest-finish", args=[contest_id]))
 
     assert created.status_code == 201
+    assert created.data["questions"] == []
     assert joined.status_code == 200
+    assert joined.data["questions"] == []
     assert started.data["status"] == Contest.Status.ACTIVE
+    assert len(started.data["questions"]) == 1
     assert answered.status_code == 200
     assert finished.status_code == 200
     assert finished.data["status"] == Contest.Status.COMPLETED

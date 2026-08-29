@@ -70,4 +70,6 @@ class ContestSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_questions(self, contest: Contest) -> list[dict]:
+        if contest.status == Contest.Status.WAITING:
+            return []
         return ContestQuestionSerializer(contest.quiz.questions.all(), many=True).data
