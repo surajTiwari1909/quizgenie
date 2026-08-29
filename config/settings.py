@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "core",
     "documents",
+    "games",
     "profiles",
     "quizzes",
     "users",
@@ -148,6 +149,25 @@ DOCUMENT_PROCESSING_SOFT_TIME_LIMIT = env.int(
     default=60,
 )
 DOCUMENT_PROCESSING_TIME_LIMIT = env.int("DOCUMENT_PROCESSING_TIME_LIMIT", default=75)
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+OPENAI_QUIZ_MODEL = env("OPENAI_QUIZ_MODEL", default="gpt-5-mini")
+QUIZ_GENERATOR_CLASS = env(
+    "QUIZ_GENERATOR_CLASS",
+    default="quizzes.providers.OpenAIQuestionGenerator",
+)
+QUIZ_MAX_REGENERATION_ATTEMPTS = env.int(
+    "QUIZ_MAX_REGENERATION_ATTEMPTS",
+    default=2,
+)
+QUIZ_GENERATION_REQUEST_TIMEOUT = env.float(
+    "QUIZ_GENERATION_REQUEST_TIMEOUT",
+    default=60.0,
+)
+QUIZ_GENERATION_SOFT_TIME_LIMIT = env.int(
+    "QUIZ_GENERATION_SOFT_TIME_LIMIT",
+    default=150,
+)
+QUIZ_GENERATION_TIME_LIMIT = env.int("QUIZ_GENERATION_TIME_LIMIT", default=180)
 CLAMAV_ENABLED = env.bool("CLAMAV_ENABLED", default=True)
 CLAMAV_HOST = env("CLAMAV_HOST", default="localhost")
 CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)

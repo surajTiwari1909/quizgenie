@@ -30,6 +30,8 @@ class Quiz(models.Model):
     )
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    topic = models.CharField(max_length=200, blank=True)
+    requested_question_count = models.PositiveSmallIntegerField(default=10)
     difficulty = models.CharField(
         max_length=10,
         choices=Difficulty.choices,
@@ -75,6 +77,7 @@ class Question(models.Model):
     explanation = models.TextField(blank=True)
     order = models.PositiveIntegerField()
     points = models.PositiveSmallIntegerField(default=1)
+    generation_attempts = models.PositiveSmallIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -92,6 +95,10 @@ class Question(models.Model):
             models.CheckConstraint(
                 condition=Q(points__gte=1),
                 name="question_points_at_least_one",
+            ),
+            models.CheckConstraint(
+                condition=Q(generation_attempts__gte=1),
+                name="question_generation_attempts_at_least_one",
             ),
         ]
 
