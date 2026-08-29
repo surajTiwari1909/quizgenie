@@ -149,11 +149,11 @@ DOCUMENT_PROCESSING_SOFT_TIME_LIMIT = env.int(
     default=60,
 )
 DOCUMENT_PROCESSING_TIME_LIMIT = env.int("DOCUMENT_PROCESSING_TIME_LIMIT", default=75)
-OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
-OPENAI_QUIZ_MODEL = env("OPENAI_QUIZ_MODEL", default="gpt-5-mini")
+GROQ_API_KEY = env("GROQ_API_KEY", default="")
+GROQ_QUIZ_MODEL = env("GROQ_QUIZ_MODEL", default="openai/gpt-oss-120b")
 QUIZ_GENERATOR_CLASS = env(
     "QUIZ_GENERATOR_CLASS",
-    default="quizzes.providers.OpenAIQuestionGenerator",
+    default="quizzes.providers.GroqQuestionGenerator",
 )
 QUIZ_MAX_REGENERATION_ATTEMPTS = env.int(
     "QUIZ_MAX_REGENERATION_ATTEMPTS",

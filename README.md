@@ -59,8 +59,8 @@ POST /quizzes/<id>/retry        Retry an owned failed topic quiz
 ```
 
 Generation runs in the Celery worker and moves a quiz through `generating`, `ready`, or `failed`.
-The default provider uses the OpenAI Responses API with schema-constrained output. Set
-`OPENAI_API_KEY` and optionally `OPENAI_QUIZ_MODEL` before running the worker. Provider output is
+The default provider uses the Groq Chat API with strict schema-constrained output. Set
+`GROQ_API_KEY` and optionally `GROQ_QUIZ_MODEL` before running the worker. Provider output is
 still validated locally: each question must have unique answer text and exactly one correct
 option. An invalid question is regenerated independently, leaving valid questions untouched.
 `QUIZ_MAX_REGENERATION_ATTEMPTS` controls the per-question retry limit.

@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from quizzes import services
 from quizzes.models import Quiz
-from quizzes.providers import OpenAIQuestionGenerator
+from quizzes.providers import GroqQuestionGenerator
 from quizzes.validation import GeneratedAnswerOption, GeneratedQuestion
 
 pytestmark = pytest.mark.django_db
@@ -137,20 +137,20 @@ def test_users_cannot_read_another_users_quiz() -> None:
     assert response.status_code == 404
 
 
-def test_openai_provider_requests_strict_structured_output(settings) -> None:
-    settings.OPENAI_API_KEY = "test-key"
-    settings.OPENAI_QUIZ_MODEL = "test-model"
+def test_groq_provider_requests_strict_structured_output(settings) -> None:
+    settings.GROQ_API_KEY = "test-key"
+    settings.GROQ_QUIZ_MODEL = "test-model"
     response = SimpleNamespace(
-        output_text=(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=(
             '{"questions":[{"text":"Question","explanation":"Explanation",'
             '"points":1,"options":[{"text":"Correct","is_correct":true},'
             '{"text":"Incorrect","is_correct":false}]}]}'
-        )
+        )))]
     )
 
-    with patch("openai.OpenAI") as client_class:
-        client_class.return_value.responses.create.return_value = response
-        questions = OpenAIQuestionGenerator().generate_questions(
+    with patch("groq.Groq") as client_class:
+        client_class.return_value.chat.completions.create.return_value = response
+        questions = GroqQuestionGenerator().generate_questions(
             topic="Testing",
             difficulty="medium",
             question_count=1,
@@ -167,8 +167,7 @@ def test_openai_provider_requests_strict_structured_output(settings) -> None:
             ),
         )
     ]
-    call = client_class.return_value.responses.create.call_args.kwargs
+    call = client_class.return_value.chat.completions.create.call_args.kwargs
     assert call["model"] == "test-model"
-    assert call["store"] is False
-    assert call["text"]["format"]["type"] == "json_schema"
-    assert call["text"]["format"]["strict"] is True
+    assert call["response_format"]["type"] == "json_schema"
+    assert call["response_format"]["json_schema"]["strict"] is True

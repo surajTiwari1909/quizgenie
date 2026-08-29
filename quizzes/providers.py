@@ -53,14 +53,14 @@ QUESTION_SCHEMA = {
 }
 
 
-class OpenAIQuestionGenerator:
-    """Generate schema-constrained quiz questions through the OpenAI Responses API."""
+class GroqQuestionGenerator:
+    """Generate schema-constrained quiz questions through the Groq Chat API."""
 
     def __init__(self) -> None:
-        from openai import OpenAI
+        from groq import Groq
 
-        self.client = OpenAI(
-            api_key=settings.OPENAI_API_KEY or None,
+        self.client = Groq(
+            api_key=settings.GROQ_API_KEY or None,
             timeout=settings.QUIZ_GENERATION_REQUEST_TIMEOUT,
         )
 
@@ -117,26 +117,33 @@ class OpenAIQuestionGenerator:
         return _deserialize_question(payload)
 
     def _request(self, *, prompt: str, schema: dict, schema_name: str) -> dict:
-        response = self.client.responses.create(
-            model=settings.OPENAI_QUIZ_MODEL,
-            instructions=(
-                "You create accurate, unambiguous educational multiple-choice questions. "
-                "Exactly one option must be correct. Distractors must be plausible but false."
-            ),
-            input=prompt,
-            text={
-                "format": {
-                    "type": "json_schema",
+        response = self.client.chat.completions.create(
+            model=settings.GROQ_QUIZ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You create accurate, unambiguous educational multiple-choice questions. "
+                        "Exactly one option must be correct. Distractors must be plausible "
+                        "but false."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
                     "name": schema_name,
                     "strict": True,
                     "schema": schema,
                 }
             },
-            store=False,
+            temperature=0.2,
         )
-        if not response.output_text:
+        content = response.choices[0].message.content if response.choices else None
+        if not content:
             raise ValueError("The quiz provider returned no structured output.")
-        return json.loads(response.output_text)
+        return json.loads(content)
 
 
 def _deserialize_question(data: dict) -> GeneratedQuestion:
@@ -161,4 +168,3 @@ def _serialize_question(question: GeneratedQuestion) -> dict:
             for option in question.options
         ],
     }
-
