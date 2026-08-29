@@ -51,6 +51,28 @@ def start_solo_attempt(request: Request) -> Response:
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def solo_attempt_collection(request: Request) -> Response:
+    return Response(
+        SoloAttemptSerializer(services.list_solo_attempts(user=request.user), many=True).data
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def retake_solo_attempt(request: Request, attempt_id: int) -> Response:
+    attempt = get_object_or_404(
+        SoloAttempt.objects.select_related("quiz"), id=attempt_id, user=request.user
+    )
+    try:
+        new_attempt = services.start_solo_attempt(user=request.user, quiz=attempt.quiz)
+    except services.InvalidQuizForGameplay as error:
+        return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+    new_attempt = get_object_or_404(_attempt_queryset(), id=new_attempt.id)
+    return Response(SoloAttemptSerializer(new_attempt).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def solo_attempt_detail(request: Request, attempt_id: int) -> Response:
     attempt = get_object_or_404(_attempt_queryset(), id=attempt_id, user=request.user)
     return Response(SoloAttemptSerializer(attempt).data)
@@ -87,4 +109,3 @@ def complete_solo_attempt(request: Request, attempt_id: int) -> Response:
         return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
     completed_attempt = get_object_or_404(_attempt_queryset(), id=attempt.id)
     return Response(SoloAttemptSerializer(completed_attempt).data)
-

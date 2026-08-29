@@ -3,9 +3,11 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework.test import APIClient
 
+from documents.models import Document, DocumentContent
 from quizzes import services
 from quizzes.models import Quiz
 from quizzes.providers import GroqQuestionGenerator
@@ -137,15 +139,67 @@ def test_users_cannot_read_another_users_quiz() -> None:
     assert response.status_code == 404
 
 
+def test_document_generation_requires_ready_extracted_content() -> None:
+    user = get_user_model().objects.create_user(username="learner")
+    document = Document.objects.create(
+        owner=user,
+        file=SimpleUploadedFile("notes.pdf", b"%PDF-1.4\n%%EOF"),
+        original_filename="notes.pdf",
+        content_type="application/pdf",
+        file_size=15,
+        status=Document.Status.READY,
+    )
+    DocumentContent.objects.create(
+        document=document, text="Cells are life.", page_count=1, character_count=16
+    )
+
+    quiz = services.create_document_quiz(
+        owner=user,
+        document=document,
+        title="",
+        difficulty=Quiz.Difficulty.EASY,
+        question_count=2,
+    )
+
+    assert quiz.source_document == document
+    assert quiz.topic == "notes.pdf"
+    assert quiz.status == Quiz.Status.GENERATING
+
+
+def test_quiz_can_be_updated_and_deleted_by_owner() -> None:
+    user = get_user_model().objects.create_user(username="learner")
+    quiz = Quiz.objects.create(owner=user, title="Old title")
+    client = APIClient()
+    client.force_authenticate(user)
+
+    updated = client.patch(
+        reverse("quiz-manage", args=[quiz.id]),
+        {"title": "New title", "description": "Updated"},
+        format="json",
+    )
+    deleted = client.delete(reverse("quiz-manage", args=[quiz.id]))
+
+    assert updated.status_code == 200
+    assert updated.data["title"] == "New title"
+    assert deleted.status_code == 204
+    assert not Quiz.objects.filter(id=quiz.id).exists()
+
+
 def test_groq_provider_requests_strict_structured_output(settings) -> None:
     settings.GROQ_API_KEY = "test-key"
     settings.GROQ_QUIZ_MODEL = "test-model"
     response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=(
-            '{"questions":[{"text":"Question","explanation":"Explanation",'
-            '"points":1,"options":[{"text":"Correct","is_correct":true},'
-            '{"text":"Incorrect","is_correct":false}]}]}'
-        )))]
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=(
+                        '{"questions":[{"text":"Question","explanation":"Explanation",'
+                        '"points":1,"options":[{"text":"Correct","is_correct":true},'
+                        '{"text":"Incorrect","is_correct":false}]}]}'
+                    )
+                )
+            )
+        ]
     )
 
     with patch("groq.Groq") as client_class:

@@ -18,6 +18,10 @@ class TopicQuizGenerationSerializer(serializers.Serializer):
     question_count = serializers.IntegerField(min_value=1, max_value=20, default=10)
 
 
+class DocumentQuizGenerationSerializer(TopicQuizGenerationSerializer):
+    document_id = serializers.IntegerField(min_value=1)
+
+
 class AnswerOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = AnswerOption
@@ -62,5 +66,14 @@ class QuizSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = fields
-
+        read_only_fields = (
+            "id",
+            "topic",
+            "requested_question_count",
+            "status",
+            "failure_reason",
+            "source_document_id",
+            "questions",
+            "created_at",
+            "updated_at",
+        )

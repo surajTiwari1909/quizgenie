@@ -11,4 +11,3 @@ from quizzes import services
 )
 def generate_topic_quiz_task(quiz_id: int) -> None:
     services.process_topic_quiz(quiz_id)
-

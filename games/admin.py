@@ -25,4 +25,3 @@ class SoloAnswerAdmin(admin.ModelAdmin):
     list_filter = ("is_correct",)
     raw_id_fields = ("attempt", "question", "selected_option")
     readonly_fields = ("answered_at",)
-

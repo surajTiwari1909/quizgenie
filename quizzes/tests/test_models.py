@@ -106,4 +106,3 @@ def test_answer_options_are_ordered_and_allow_only_one_correct_answer() -> None:
             is_correct=True,
             order=3,
         )
-

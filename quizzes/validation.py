@@ -47,4 +47,3 @@ def validate_generated_question(question: GeneratedQuestion) -> tuple[str, ...]:
     if sum(option.is_correct for option in question.options) != 1:
         errors.append("A question must have exactly one correct answer option.")
     return tuple(dict.fromkeys(errors))
-

@@ -124,4 +124,3 @@ def test_user_cannot_access_another_users_attempt() -> None:
     response = client.get(reverse("solo-attempt-detail", args=[attempt.id]))
 
     assert response.status_code == 404
-

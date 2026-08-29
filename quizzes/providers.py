@@ -13,6 +13,7 @@ class QuestionGenerator(Protocol):
         topic: str,
         difficulty: str,
         question_count: int,
+        context: str | None = None,
     ) -> list[GeneratedQuestion]: ...
 
     def regenerate_question(
@@ -22,6 +23,7 @@ class QuestionGenerator(Protocol):
         difficulty: str,
         question: GeneratedQuestion | None,
         errors: tuple[str, ...],
+        context: str | None = None,
     ) -> GeneratedQuestion: ...
 
 
@@ -70,6 +72,7 @@ class GroqQuestionGenerator:
         topic: str,
         difficulty: str,
         question_count: int,
+        context: str | None = None,
     ) -> list[GeneratedQuestion]:
         schema = {
             "type": "object",
@@ -88,6 +91,7 @@ class GroqQuestionGenerator:
             prompt=(
                 f"Create {question_count} {difficulty} multiple-choice quiz questions "
                 f"about this topic: {topic}"
+                + (f"\nUse only this study material:\n{context}" if context else "")
             ),
             schema=schema,
             schema_name="topic_quiz",
@@ -101,6 +105,7 @@ class GroqQuestionGenerator:
         difficulty: str,
         question: GeneratedQuestion | None,
         errors: tuple[str, ...],
+        context: str | None = None,
     ) -> GeneratedQuestion:
         previous = "No usable question was returned."
         if question is not None:
@@ -110,6 +115,7 @@ class GroqQuestionGenerator:
                 f"Create one replacement {difficulty} multiple-choice question about {topic}. "
                 f"Do not repeat this invalid candidate: {previous}. "
                 f"Correct these validation errors: {'; '.join(errors)}"
+                + (f"\nUse only this study material:\n{context}" if context else "")
             ),
             schema=QUESTION_SCHEMA,
             schema_name="replacement_question",
@@ -136,7 +142,7 @@ class GroqQuestionGenerator:
                     "name": schema_name,
                     "strict": True,
                     "schema": schema,
-                }
+                },
             },
             temperature=0.2,
         )
@@ -164,7 +170,6 @@ def _serialize_question(question: GeneratedQuestion) -> dict:
         "explanation": question.explanation,
         "points": question.points,
         "options": [
-            {"text": option.text, "is_correct": option.is_correct}
-            for option in question.options
+            {"text": option.text, "is_correct": option.is_correct} for option in question.options
         ],
     }

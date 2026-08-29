@@ -72,6 +72,7 @@ class SoloAttemptSerializer(serializers.ModelSerializer):
             "questions",
             "answers",
             "started_at",
+            "expires_at",
             "completed_at",
         )
         read_only_fields = fields
@@ -86,4 +87,3 @@ class SoloAttemptSerializer(serializers.ModelSerializer):
 
     def get_answered_count(self, attempt: SoloAttempt) -> int:
         return attempt.answers.count()
-

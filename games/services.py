@@ -1,5 +1,7 @@
+from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Sum
 from django.utils import timezone
@@ -38,6 +40,7 @@ def start_solo_attempt(*, user: Any, quiz: Quiz) -> SoloAttempt:
         quiz=quiz,
         max_score=sum(question.points for question in questions),
         question_count=len(questions),
+        expires_at=timezone.now() + timedelta(seconds=settings.SOLO_ATTEMPT_TIME_LIMIT_SECONDS),
     )
 
 
@@ -51,6 +54,9 @@ def submit_solo_answer(
         locked_attempt = SoloAttempt.objects.select_for_update().get(pk=attempt.pk)
         if locked_attempt.status != SoloAttempt.Status.IN_PROGRESS:
             raise InvalidAttemptState("This attempt has already been completed.")
+        if locked_attempt.expires_at and locked_attempt.expires_at <= timezone.now():
+            _expire_attempt(locked_attempt)
+            raise InvalidAttemptState("This attempt has expired.")
 
         try:
             question = Question.objects.get(id=question_id, quiz=locked_attempt.quiz)
@@ -87,6 +93,10 @@ def complete_solo_attempt(attempt: SoloAttempt) -> SoloAttempt:
         if locked_attempt.status == SoloAttempt.Status.COMPLETED:
             return locked_attempt
 
+        if locked_attempt.expires_at and locked_attempt.expires_at <= timezone.now():
+            _expire_attempt(locked_attempt)
+            return locked_attempt
+
         answered_count = locked_attempt.answers.aggregate(count=Count("id"))["count"]
         if answered_count != locked_attempt.question_count:
             raise InvalidAttemptState("Every question must be answered before completion.")
@@ -99,3 +109,12 @@ def complete_solo_attempt(attempt: SoloAttempt) -> SoloAttempt:
         locked_attempt.save(update_fields=["score", "status", "completed_at"])
         return locked_attempt
 
+
+def _expire_attempt(attempt: SoloAttempt) -> None:
+    attempt.status = SoloAttempt.Status.COMPLETED
+    attempt.completed_at = timezone.now()
+    attempt.save(update_fields=["status", "completed_at"])
+
+
+def list_solo_attempts(*, user: Any):
+    return SoloAttempt.objects.filter(user=user).select_related("quiz")

@@ -42,6 +42,30 @@ def create_topic_quiz(
     return quiz
 
 
+def create_document_quiz(
+    *,
+    owner: Any,
+    document: Any,
+    title: str,
+    difficulty: str,
+    question_count: int,
+) -> Quiz:
+    if document.status != "ready" or not hasattr(document, "content"):
+        raise InvalidQuizState("Only documents with ready extracted content can generate quizzes.")
+    with transaction.atomic():
+        quiz = Quiz.objects.create(
+            owner=owner,
+            source_document=document,
+            title=title or document.original_filename,
+            topic=document.original_filename,
+            difficulty=difficulty,
+            requested_question_count=question_count,
+            status=Quiz.Status.GENERATING,
+        )
+        transaction.on_commit(lambda: enqueue_quiz_generation(quiz.id))
+    return quiz
+
+
 def process_topic_quiz(quiz_id: int, *, generator: QuestionGenerator | None = None) -> None:
     try:
         quiz = Quiz.objects.get(id=quiz_id)
@@ -55,11 +79,13 @@ def process_topic_quiz(quiz_id: int, *, generator: QuestionGenerator | None = No
             topic=quiz.topic,
             difficulty=quiz.difficulty,
             question_count=quiz.requested_question_count,
+            context=(quiz.source_document.content.text if quiz.source_document_id else None),
         )
         validated_questions = _validate_and_regenerate_questions(
             quiz=quiz,
             candidates=candidates,
             generator=active_generator,
+            context=(quiz.source_document.content.text if quiz.source_document_id else None),
         )
         _persist_generated_questions(quiz_id=quiz.id, questions=validated_questions)
     except Quiz.DoesNotExist:
@@ -103,6 +129,7 @@ def _validate_and_regenerate_questions(
     quiz: Quiz,
     candidates: list[GeneratedQuestion],
     generator: QuestionGenerator,
+    context: str | None = None,
 ) -> list[tuple[GeneratedQuestion, int]]:
     validated: list[tuple[GeneratedQuestion, int]] = []
     max_regenerations = settings.QUIZ_MAX_REGENERATION_ATTEMPTS
@@ -122,6 +149,7 @@ def _validate_and_regenerate_questions(
                 difficulty=quiz.difficulty,
                 question=candidate,
                 errors=errors,
+                context=context,
             )
             attempts += 1
             errors = validate_generated_question(candidate)
@@ -173,4 +201,3 @@ def _mark_quiz_failed(quiz_id: int, reason: str) -> None:
         failure_reason=reason[:2_000],
         updated_at=timezone.now(),
     )
-

@@ -22,4 +22,3 @@ def test_question_validation_reports_independent_structural_errors() -> None:
     assert "Points must be between 1 and 100." in errors
     assert "Answer options must be unique within a question." in errors
     assert "A question must have exactly one correct answer option." in errors
-

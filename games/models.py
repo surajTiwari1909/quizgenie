@@ -29,6 +29,7 @@ class SoloAttempt(models.Model):
     max_score = models.PositiveIntegerField()
     question_count = models.PositiveIntegerField()
     started_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
     completed_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -85,4 +86,3 @@ class SoloAnswer(models.Model):
 
     def __str__(self) -> str:
         return f"Answer to question {self.question_id} in attempt {self.attempt_id}"
-
